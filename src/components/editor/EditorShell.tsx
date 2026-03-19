@@ -8,6 +8,7 @@ import { TopToolbar } from '@/components/toolbar/TopToolbar';
 import { Canvas } from '@/components/canvas/Canvas';
 import { LayerPanel } from '@/components/panels/LayerPanel';
 import { StylePanel } from '@/components/panels/StylePanel';
+import { DesignSystemPanel } from '@/components/panels/DesignSystemPanel';
 import { ImportUrlDialog } from '@/components/dialogs/ImportUrlDialog';
 import { ResizablePanel } from '@/components/ui/ResizablePanel';
 
@@ -63,6 +64,7 @@ export const EditorShell: React.FC = () => {
 
   const showLayers = openPanels.includes('layers');
   const showStyles = openPanels.includes('styles');
+  const showDesignSystem = openPanels.includes('design-system');
 
   return (
     <div className="penma-editor flex h-screen flex-col select-none" style={{ background: 'var(--penma-bg)' }}>
@@ -79,16 +81,53 @@ export const EditorShell: React.FC = () => {
         {/* Center: Canvas */}
         <Canvas />
 
-        {/* Right panel: Styles — resizable */}
-        {showStyles && (
+        {/* Right panels */}
+        {(showStyles || showDesignSystem) && (
           <ResizablePanel side="right" defaultWidth={288} minWidth={240} maxWidth={480}>
-            <StylePanel />
+            {showStyles && showDesignSystem ? (
+              <RightPanelTabs />
+            ) : showDesignSystem ? (
+              <DesignSystemPanel />
+            ) : (
+              <StylePanel />
+            )}
           </ResizablePanel>
         )}
       </div>
 
       {/* Dialogs */}
       <ImportUrlDialog />
+    </div>
+  );
+};
+
+// ── Right panel tabs (Style + Design System) ────────────────
+
+const RightPanelTabs: React.FC = () => {
+  const [activeTab, setActiveTab] = React.useState<'styles' | 'design-system'>('styles');
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-9 flex-shrink-0" style={{ borderBottom: '1px solid var(--penma-border)' }}>
+        {(['styles', 'design-system'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 flex items-center justify-center text-[11px] font-semibold uppercase tracking-wider cursor-pointer"
+            style={{
+              fontFamily: 'var(--font-heading)',
+              color: activeTab === tab ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+              borderBottom: activeTab === tab ? '2px solid var(--penma-primary)' : '2px solid transparent',
+              transition: 'var(--transition-base)',
+            }}
+          >
+            {tab === 'styles' ? 'Design' : 'System'}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'styles' ? <StylePanel /> : <DesignSystemPanel />}
+      </div>
     </div>
   );
 };

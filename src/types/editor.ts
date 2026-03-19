@@ -1,6 +1,6 @@
 export type Tool = 'select' | 'hand' | 'text' | 'zoom';
 
-export type PanelId = 'layers' | 'styles';
+export type PanelId = 'layers' | 'styles' | 'design-system';
 
 export interface Camera {
   x: number;

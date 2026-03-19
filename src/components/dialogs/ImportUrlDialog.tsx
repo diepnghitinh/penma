@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { X, Globe, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { X, Globe, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone, Check } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import type { FetchUrlResponse } from '@/types/api';
 
@@ -218,11 +218,9 @@ export const ImportUrlDialog: React.FC = () => {
             </div>
           )}
 
-          {/* Loading state info */}
+          {/* Loading progress */}
           {isImporting && (
-            <div className="mt-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-sm text-blue-600">
-              Importing at {viewport.width}×{viewport.height}... This may take 10-20 seconds.
-            </div>
+            <ImportProgress viewport={viewport} />
           )}
 
           {/* Example URLs */}
@@ -244,6 +242,107 @@ export const ImportUrlDialog: React.FC = () => {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Animated import progress ────────────────────────────────
+
+const IMPORT_STEPS = [
+  { label: 'Launching browser', duration: 2000 },
+  { label: 'Navigating to page', duration: 3000 },
+  { label: 'Waiting for content to render', duration: 5000 },
+  { label: 'Extracting DOM structure', duration: 3000 },
+  { label: 'Capturing styles & assets', duration: 3000 },
+  { label: 'Building design tree', duration: 2000 },
+];
+
+const ImportProgress: React.FC<{ viewport: { width: number; height: number } }> = ({ viewport }) => {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const startTime = useRef(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const total = now - startTime.current;
+      setElapsed(total);
+
+      // Advance steps based on cumulative duration
+      let cumulative = 0;
+      for (let i = 0; i < IMPORT_STEPS.length; i++) {
+        cumulative += IMPORT_STEPS[i].duration;
+        if (total < cumulative) {
+          setCurrentStep(i);
+          return;
+        }
+      }
+      setCurrentStep(IMPORT_STEPS.length - 1);
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const totalEstimate = IMPORT_STEPS.reduce((s, step) => s + step.duration, 0);
+  const progress = Math.min((elapsed / totalEstimate) * 100, 95); // Never hit 100 until actually done
+
+  return (
+    <div className="mt-3 rounded-lg border overflow-hidden" style={{ borderColor: 'var(--penma-border)', background: 'var(--penma-surface)' }}>
+      {/* Progress bar */}
+      <div className="h-1 w-full" style={{ background: 'var(--penma-hover-bg)' }}>
+        <div
+          className="h-full"
+          style={{
+            width: `${progress}%`,
+            background: 'var(--penma-primary)',
+            transition: 'width 400ms ease',
+          }}
+        />
+      </div>
+
+      <div className="px-4 py-3">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium" style={{ color: 'var(--penma-text)' }}>
+            Importing at {viewport.width}×{viewport.height}
+          </span>
+          <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+            {Math.round(elapsed / 1000)}s
+          </span>
+        </div>
+
+        {/* Steps */}
+        <div className="flex flex-col gap-1.5">
+          {IMPORT_STEPS.map((step, i) => {
+            const isDone = i < currentStep;
+            const isActive = i === currentStep;
+            return (
+              <div key={i} className="flex items-center gap-2">
+                {/* Icon */}
+                <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+                  {isDone ? (
+                    <Check size={12} style={{ color: 'var(--penma-primary)' }} />
+                  ) : isActive ? (
+                    <Loader2 size={12} className="animate-spin" style={{ color: 'var(--penma-primary)' }} />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--penma-border)' }} />
+                  )}
+                </div>
+                {/* Label */}
+                <span
+                  className="text-[11px]"
+                  style={{
+                    color: isDone ? 'var(--penma-text-muted)' : isActive ? 'var(--penma-text)' : 'var(--penma-border-strong)',
+                    fontWeight: isActive ? 500 : 400,
+                  }}
+                >
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ import {
   Download,
   PanelLeft,
   PanelRight,
+  Palette,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import type { Tool } from '@/types/editor';
@@ -96,6 +97,18 @@ export const TopToolbar: React.FC = () => {
           title="Toggle Styles Panel"
         >
           <PanelRight size={16} />
+        </button>
+        <button
+          onClick={() => togglePanel('design-system')}
+          className="flex h-8 w-8 items-center justify-center rounded cursor-pointer"
+          style={{
+            color: openPanels.includes('design-system') ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+            background: openPanels.includes('design-system') ? 'var(--penma-primary-light)' : 'transparent',
+            transition: 'var(--transition-base)',
+          }}
+          title="Toggle Design System"
+        >
+          <Palette size={16} />
         </button>
 
         <Separator />
