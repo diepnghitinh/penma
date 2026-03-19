@@ -2,9 +2,6 @@
 
 import React from 'react';
 import {
-  MousePointer2,
-  Hand,
-  Type,
   ZoomIn,
   ZoomOut,
   Undo2,
@@ -17,17 +14,10 @@ import {
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { EditSettingsPopover } from './EditSettingsPopover';
-import type { Tool } from '@/types/editor';
 
-const tools: { id: Tool; icon: React.ElementType; label: string; shortcut: string }[] = [
-  { id: 'select', icon: MousePointer2, label: 'Select', shortcut: 'V' },
-  { id: 'hand', icon: Hand, label: 'Hand', shortcut: 'H' },
-  { id: 'text', icon: Type, label: 'Text', shortcut: 'T' },
-];
+// Tools moved to BottomToolbar
 
 export const TopToolbar: React.FC = () => {
-  const activeTool = useEditorStore((s) => s.activeTool);
-  const setActiveTool = useEditorStore((s) => s.setActiveTool);
   const camera = useEditorStore((s) => s.camera);
   const zoomIn = useEditorStore((s) => s.zoomIn);
   const zoomOut = useEditorStore((s) => s.zoomOut);
@@ -111,25 +101,6 @@ export const TopToolbar: React.FC = () => {
         >
           <Palette size={16} />
         </button>
-
-        <Separator />
-
-        {/* Tools */}
-        {tools.map(({ id, icon: Icon, label, shortcut }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTool(id)}
-            className="flex h-8 w-8 items-center justify-center rounded cursor-pointer"
-            style={{
-              color: activeTool === id ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
-              background: activeTool === id ? 'var(--penma-primary-light)' : 'transparent',
-              transition: 'var(--transition-base)',
-            }}
-            title={`${label} (${shortcut})`}
-          >
-            <Icon size={18} />
-          </button>
-        ))}
 
         <Separator />
 

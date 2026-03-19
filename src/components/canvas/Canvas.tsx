@@ -8,6 +8,8 @@ import { SelectionOverlay } from './SelectionOverlay';
 import { AutoLayoutOverlay } from './AutoLayoutOverlay';
 import { MeasureOverlay } from './MeasureOverlay';
 import { MarqueeSelect } from './MarqueeSelect';
+import { BottomToolbar } from '@/components/toolbar/BottomToolbar';
+import { CanvasContextMenu } from './ContextMenu';
 
 export const Canvas: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
@@ -213,6 +215,12 @@ export const Canvas: React.FC = () => {
       <MeasureOverlay />
       <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
+
+      {/* Figma-style bottom toolbar */}
+      <BottomToolbar />
+
+      {/* Right-click context menu */}
+      <CanvasContextMenu />
     </div>
   );
 };

@@ -40,6 +40,22 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     [activeTool, node.id, select]
   );
 
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Select the element if not already selected
+      if (!selectedIds.includes(node.id)) {
+        select(node.id, false);
+      }
+      // Dispatch custom event for the ContextMenu component
+      window.dispatchEvent(new CustomEvent('penma:contextmenu', {
+        detail: { x: e.clientX, y: e.clientY, nodeId: node.id },
+      }));
+    },
+    [node.id, selectedIds, select]
+  );
+
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!editEnabled || !editSettings.textEditable) return;
@@ -196,6 +212,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
         alt={safeAttrs.alt || ''}
         draggable={false}
       />
@@ -211,6 +228,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
         dangerouslySetInnerHTML={{ __html: node.rawHtml }}
       />
     );
@@ -231,6 +249,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
       />
     );
   }

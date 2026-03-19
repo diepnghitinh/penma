@@ -23,13 +23,15 @@ export const ImportUrlDialog: React.FC = () => {
   const showImportDialog = useEditorStore((s) => s.showImportDialog);
   const setShowImportDialog = useEditorStore((s) => s.setShowImportDialog);
   const setDocument = useEditorStore((s) => s.setDocument);
-  const isImporting = useEditorStore((s) => s.isImporting);
   const setImporting = useEditorStore((s) => s.setImporting);
   const importError = useEditorStore((s) => s.importError);
   const setImportError = useEditorStore((s) => s.setImportError);
 
   const [url, setUrl] = useState('');
-  const [selectedPreset, setSelectedPreset] = useState(0); // Desktop
+  const [isLoading, setIsLoading] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStep, setImportStep] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState(0);
   const [customWidth, setCustomWidth] = useState('');
   const [customHeight, setCustomHeight] = useState('');
   const [useCustom, setUseCustom] = useState(false);
@@ -54,38 +56,115 @@ export const ImportUrlDialog: React.FC = () => {
       finalUrl = 'https://' + finalUrl;
     }
 
+    setIsLoading(true);
     setImporting(true);
     setImportError(null);
+    setImportProgress(0);
+    setImportStep('Starting...');
 
     try {
       const viewport = getViewport();
+
+      // Use SSE streaming for real progress
       const response = await fetch('/api/fetch-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: finalUrl, viewport }),
+        body: JSON.stringify({ url: finalUrl, viewport, stream: true }),
       });
 
-      const data: FetchUrlResponse = await response.json();
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({ error: 'Network error' }));
+        setImportError(data.error || `HTTP ${response.status}`);
+        return;
+      }
 
-      if (data.success && data.document) {
-        setDocument(data.document);
-        setShowImportDialog(false);
-        setUrl('');
-      } else {
-        setImportError(data.error || 'Failed to import page');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const docChunks: string[] = [];
+      let totalChunks = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        // SSE messages are separated by double newlines
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop() || '';
+
+        for (const msg of messages) {
+          const lines = msg.split('\n');
+          let eventType = '';
+          let dataStr = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataStr = line.slice(6);
+          }
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+
+            if (eventType === 'progress') {
+              setImportProgress(data.percent);
+              setImportStep(data.step);
+            } else if (eventType === 'chunk') {
+              // Reassemble document from chunks
+              totalChunks = data.total;
+              docChunks[data.index] = data.data;
+              setImportStep(`Receiving data... ${data.index + 1}/${data.total}`);
+            } else if (eventType === 'done') {
+              setImportProgress(100);
+              setImportStep('Done!');
+
+              if (data.success && docChunks.length > 0) {
+                // Reassemble and parse the document
+                const fullJson = docChunks.join('');
+                const doc = JSON.parse(fullJson);
+                setDocument(doc);
+
+                // Center camera on the new frame
+                const store = useEditorStore.getState();
+                const newDoc = store.documents.find((d: { id: string }) => d.id === doc.id);
+                if (newDoc) {
+                  const canvasEl = window.document.querySelector('.penma-editor');
+                  const vw = canvasEl?.clientWidth || 1200;
+                  const vh = canvasEl?.clientHeight || 800;
+                  store.fitToScreen(
+                    { width: newDoc.viewport.width, height: newDoc.viewport.height },
+                    { width: vw, height: vh }
+                  );
+                }
+              }
+
+              setShowImportDialog(false);
+              setUrl('');
+              setIsLoading(false);
+            } else if (eventType === 'error') {
+              setImportError(data.error || 'Import failed');
+            }
+          } catch (parseErr) {
+            // JSON parse error on a chunk — skip
+            console.warn('SSE parse error:', parseErr);
+          }
+        }
       }
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setIsLoading(false);
+      setImporting(false);
     }
   }, [url, setDocument, setImporting, setImportError, setShowImportDialog, getViewport]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !isImporting) {
+      if (e.key === 'Enter' && !isLoading) {
         handleImport();
       }
     },
-    [handleImport, isImporting]
+    [handleImport, isLoading]
   );
 
   if (!showImportDialog) return null;
@@ -101,7 +180,7 @@ export const ImportUrlDialog: React.FC = () => {
             <Globe size={18} className="text-blue-500" />
             <h2 className="text-base font-semibold text-neutral-800">Import from URL</h2>
           </div>
-          {!isImporting && (
+          {!isLoading && (
             <button
               onClick={() => setShowImportDialog(false)}
               className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 cursor-pointer"
@@ -114,14 +193,14 @@ export const ImportUrlDialog: React.FC = () => {
         {/* Body */}
         <div className="p-5">
           {/* Loading progress — shown prominently at top when importing */}
-          {isImporting && (
+          {isLoading && (
             <div className="mb-4">
-              <ImportProgress viewport={viewport} />
+              <ImportProgress viewport={viewport} percent={importProgress} step={importStep} />
             </div>
           )}
 
           {/* Form — disabled during import */}
-          <div style={{ opacity: isImporting ? 0.4 : 1, pointerEvents: isImporting ? 'none' : 'auto', transition: 'opacity 200ms' }}>
+          <div style={{ opacity: isLoading ? 0.4 : 1, pointerEvents: isLoading ? 'none' : 'auto', transition: 'opacity 200ms' }}>
           {/* URL input */}
           <div className="flex gap-2">
             <input
@@ -132,14 +211,14 @@ export const ImportUrlDialog: React.FC = () => {
               placeholder="Enter website URL (e.g., example.com)"
               className="flex-1 rounded-lg border border-neutral-200 px-4 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
               autoFocus
-              disabled={isImporting}
+              disabled={isLoading}
             />
             <button
               onClick={() => handleImport()}
-              disabled={isImporting || !url.trim()}
+              disabled={isLoading || !url.trim()}
               className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isImporting ? (
+              {isLoading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
                   Importing...
@@ -161,7 +240,7 @@ export const ImportUrlDialog: React.FC = () => {
                   <button
                     key={preset.label}
                     onClick={() => { setSelectedPreset(i); setUseCustom(false); }}
-                    disabled={isImporting}
+                    disabled={isLoading}
                     className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-colors
                       ${active
                         ? 'border-blue-300 bg-blue-50 text-blue-600'
@@ -178,7 +257,7 @@ export const ImportUrlDialog: React.FC = () => {
               {/* Custom option */}
               <button
                 onClick={() => setUseCustom(true)}
-                disabled={isImporting}
+                disabled={isLoading}
                 className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-colors
                   ${useCustom
                     ? 'border-blue-300 bg-blue-50 text-blue-600'
@@ -203,7 +282,7 @@ export const ImportUrlDialog: React.FC = () => {
                   max={3840}
                   className="w-24 rounded-md border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:border-blue-300 focus:outline-none
                              [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  disabled={isImporting}
+                  disabled={isLoading}
                 />
                 <span className="text-xs text-neutral-400">×</span>
                 <input
@@ -215,7 +294,7 @@ export const ImportUrlDialog: React.FC = () => {
                   max={3840}
                   className="w-24 rounded-md border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:border-blue-300 focus:outline-none
                              [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  disabled={isImporting}
+                  disabled={isLoading}
                 />
                 <span className="text-xs text-neutral-400">px</span>
               </div>
@@ -233,7 +312,7 @@ export const ImportUrlDialog: React.FC = () => {
                     setUrl(exampleUrl);
                     handleImport(exampleUrl);
                   }}
-                  disabled={isImporting}
+                  disabled={isLoading}
                   className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-50 transition-colors"
                 >
                   {label}
@@ -255,56 +334,33 @@ export const ImportUrlDialog: React.FC = () => {
   );
 };
 
-// ── Animated import progress ────────────────────────────────
+// ── Real-time import progress (driven by SSE from server) ───
 
-const IMPORT_STEPS = [
-  { label: 'Launching browser', duration: 2000 },
-  { label: 'Navigating to page', duration: 3000 },
-  { label: 'Waiting for content to render', duration: 5000 },
-  { label: 'Extracting DOM structure', duration: 3000 },
-  { label: 'Capturing styles & assets', duration: 3000 },
-  { label: 'Building design tree', duration: 2000 },
-];
-
-const ImportProgress: React.FC<{ viewport: { width: number; height: number } }> = ({ viewport }) => {
-  const [currentStep, setCurrentStep] = useState(0);
+const ImportProgress: React.FC<{
+  viewport: { width: number; height: number };
+  percent: number;
+  step: string;
+}> = ({ viewport, percent, step }) => {
   const [elapsed, setElapsed] = useState(0);
   const startTime = useRef(Date.now());
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const now = Date.now();
-      const total = now - startTime.current;
-      setElapsed(total);
-
-      // Advance steps based on cumulative duration
-      let cumulative = 0;
-      for (let i = 0; i < IMPORT_STEPS.length; i++) {
-        cumulative += IMPORT_STEPS[i].duration;
-        if (total < cumulative) {
-          setCurrentStep(i);
-          return;
-        }
-      }
-      setCurrentStep(IMPORT_STEPS.length - 1);
+      setElapsed(Date.now() - startTime.current);
     }, 200);
-
     return () => clearInterval(interval);
   }, []);
 
-  const totalEstimate = IMPORT_STEPS.reduce((s, step) => s + step.duration, 0);
-  const progress = Math.min((elapsed / totalEstimate) * 100, 95); // Never hit 100 until actually done
-
   return (
-    <div className="mt-3 rounded-lg border overflow-hidden" style={{ borderColor: 'var(--penma-border)', background: 'var(--penma-surface)' }}>
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--penma-border)', background: 'var(--penma-surface)' }}>
       {/* Progress bar */}
-      <div className="h-1 w-full" style={{ background: 'var(--penma-hover-bg)' }}>
+      <div className="h-1.5 w-full" style={{ background: 'var(--penma-hover-bg)' }}>
         <div
           className="h-full"
           style={{
-            width: `${progress}%`,
-            background: 'var(--penma-primary)',
-            transition: 'width 400ms ease',
+            width: `${percent}%`,
+            background: percent >= 100 ? '#22C55E' : 'var(--penma-primary)',
+            transition: 'width 400ms ease, background 300ms',
           }}
         />
       </div>
@@ -315,41 +371,32 @@ const ImportProgress: React.FC<{ viewport: { width: number; height: number } }> 
           <span className="text-xs font-medium" style={{ color: 'var(--penma-text)' }}>
             Importing at {viewport.width}×{viewport.height}
           </span>
-          <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
-            {Math.round(elapsed / 1000)}s
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold font-mono" style={{ color: 'var(--penma-primary)' }}>
+              {percent}%
+            </span>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+              {Math.round(elapsed / 1000)}s
+            </span>
+          </div>
         </div>
 
-        {/* Steps */}
-        <div className="flex flex-col gap-1.5">
-          {IMPORT_STEPS.map((step, i) => {
-            const isDone = i < currentStep;
-            const isActive = i === currentStep;
-            return (
-              <div key={i} className="flex items-center gap-2">
-                {/* Icon */}
-                <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-                  {isDone ? (
-                    <Check size={12} style={{ color: 'var(--penma-primary)' }} />
-                  ) : isActive ? (
-                    <Loader2 size={12} className="animate-spin" style={{ color: 'var(--penma-primary)' }} />
-                  ) : (
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--penma-border)' }} />
-                  )}
-                </div>
-                {/* Label */}
-                <span
-                  className="text-[11px]"
-                  style={{
-                    color: isDone ? 'var(--penma-text-muted)' : isActive ? 'var(--penma-text)' : 'var(--penma-border-strong)',
-                    fontWeight: isActive ? 500 : 400,
-                  }}
-                >
-                  {step.label}
-                </span>
-              </div>
-            );
-          })}
+        {/* Current step */}
+        <div className="flex items-center gap-2">
+          {percent < 100 ? (
+            <Loader2 size={12} className="animate-spin flex-shrink-0" style={{ color: 'var(--penma-primary)' }} />
+          ) : (
+            <Check size={12} className="flex-shrink-0" style={{ color: '#22C55E' }} />
+          )}
+          <span
+            className="text-[11px]"
+            style={{
+              color: percent >= 100 ? '#22C55E' : 'var(--penma-text)',
+              fontWeight: 500,
+            }}
+          >
+            {step}
+          </span>
         </div>
       </div>
     </div>

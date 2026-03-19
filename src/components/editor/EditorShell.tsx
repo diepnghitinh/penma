@@ -11,6 +11,7 @@ import { StylePanel } from '@/components/panels/StylePanel';
 import { DesignSystemPanel } from '@/components/panels/DesignSystemPanel';
 import { ImportUrlDialog } from '@/components/dialogs/ImportUrlDialog';
 import { ResizablePanel } from '@/components/ui/ResizablePanel';
+import { PageTabs } from '@/components/toolbar/PageTabs';
 
 export const EditorShell: React.FC = () => {
   const openPanels = useEditorStore((s) => s.openPanels);
@@ -20,6 +21,12 @@ export const EditorShell: React.FC = () => {
     const unsubscribe = tinykeys(window, {
       'v': () => useEditorStore.getState().setActiveTool('select'),
       'h': () => useEditorStore.getState().setActiveTool('hand'),
+      'f': () => useEditorStore.getState().setActiveTool('frame'),
+      's': () => useEditorStore.getState().setActiveTool('section'),
+      'r': () => useEditorStore.getState().setActiveTool('rectangle'),
+      'l': () => useEditorStore.getState().setActiveTool('line'),
+      'o': () => useEditorStore.getState().setActiveTool('ellipse'),
+      'p': () => useEditorStore.getState().setActiveTool('pen'),
       't': () => useEditorStore.getState().setActiveTool('text'),
       '$mod+z': (e: KeyboardEvent) => {
         e.preventDefault();
@@ -81,6 +88,7 @@ export const EditorShell: React.FC = () => {
   return (
     <div className="penma-editor flex h-screen flex-col select-none" style={{ background: 'var(--penma-bg)' }}>
       <TopToolbar />
+      <PageTabs />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: Layers — resizable */}

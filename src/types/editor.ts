@@ -1,4 +1,10 @@
-export type Tool = 'select' | 'hand' | 'text' | 'zoom';
+export type Tool =
+  | 'select' | 'hand'
+  | 'frame' | 'section' | 'slice'
+  | 'rectangle' | 'line' | 'arrow' | 'ellipse' | 'polygon' | 'star' | 'image'
+  | 'pen' | 'pencil'
+  | 'text'
+  | 'zoom';
 
 export type PanelId = 'layers' | 'styles' | 'design-system';
 
