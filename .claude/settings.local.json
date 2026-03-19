@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "WebSearch",
+      "Bash(npx:*)",
+      "Bash(yes \"\")",
+      "Bash(mv penma/* penma/.* .)",
+      "Bash(rmdir penma:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm config:*)",
+      "Bash(pnpm install:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(pnpm build:*)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

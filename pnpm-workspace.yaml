@@ -1,3 +1,4 @@
+approveBuilds: puppeteer
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
