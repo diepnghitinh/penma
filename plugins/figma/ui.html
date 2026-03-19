@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      color: #333;
+      padding: 16px;
+      background: #fff;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .header .logo {
+      width: 24px; height: 24px;
+      background: #3B82F6;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 11px;
+    }
+    .header h1 { font-size: 14px; font-weight: 600; }
+    .drop-zone {
+      border: 2px dashed #E2E8F0;
+      border-radius: 8px;
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 150ms;
+      margin-bottom: 12px;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #3B82F6;
+      background: #EFF6FF;
+    }
+    .drop-zone .icon { font-size: 24px; margin-bottom: 8px; color: #94A3B8; }
+    .drop-zone p { color: #64748B; font-size: 11px; }
+    .drop-zone .filename { color: #3B82F6; font-weight: 500; margin-top: 4px; }
+    input[type="file"] { display: none; }
+    .btn {
+      width: 100%;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
+    }
+    .btn-primary {
+      background: #3B82F6;
+      color: white;
+    }
+    .btn-primary:hover { background: #2563EB; }
+    .btn-primary:disabled { opacity: 0.4; cursor: default; }
+    .status {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: #EFF6FF; color: #1D4ED8; }
+    .status.success { background: #F0FDF4; color: #15803D; }
+    .status.error { background: #FEF2F2; color: #DC2626; }
+    .progress {
+      margin-top: 8px;
+      height: 3px;
+      background: #E2E8F0;
+      border-radius: 2px;
+      overflow: hidden;
+      display: none;
+    }
+    .progress.show { display: block; }
+    .progress-bar {
+      height: 100%;
+      background: #3B82F6;
+      transition: width 300ms;
+      border-radius: 2px;
+    }
+    .stats {
+      margin-top: 12px;
+      display: none;
+      font-size: 10px;
+      color: #94A3B8;
+    }
+    .stats.show { display: flex; gap: 12px; }
+    .or {
+      text-align: center;
+      color: #CBD5E1;
+      font-size: 10px;
+      margin: 8px 0;
+    }
+    textarea {
+      width: 100%;
+      height: 80px;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 11px;
+      font-family: monospace;
+      resize: vertical;
+      margin-bottom: 12px;
+    }
+    textarea:focus { outline: none; border-color: #3B82F6; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">P</div>
+    <h1>Penma Import</h1>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📄</div>
+    <p>Drop Penma JSON file here<br>or click to browse</p>
+    <div class="filename" id="fileName"></div>
+  </div>
+  <input type="file" id="fileInput" accept=".json">
+
+  <div class="or">— or paste JSON —</div>
+
+  <textarea id="jsonInput" placeholder='Paste Penma/Figma JSON here...'></textarea>
+
+  <button class="btn btn-primary" id="importBtn" disabled>Import to Figma</button>
+
+  <div class="progress" id="progress">
+    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="stats" id="stats">
+    <span id="statNodes">0 nodes</span>
+    <span id="statFrames">0 frames</span>
+    <span id="statTexts">0 texts</span>
+  </div>
+
+  <script>
+    let jsonData = null;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const jsonInput = document.getElementById('jsonInput');
+    const importBtn = document.getElementById('importBtn');
+    const statusEl = document.getElementById('status');
+    const progressEl = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+    const fileNameEl = document.getElementById('fileName');
+    const statsEl = document.getElementById('stats');
+
+    // File drop
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) loadFile(e.target.files[0]);
+    });
+
+    // Paste JSON
+    jsonInput.addEventListener('input', () => {
+      try {
+        if (jsonInput.value.trim()) {
+          jsonData = JSON.parse(jsonInput.value);
+          importBtn.disabled = false;
+          showStatus('JSON parsed successfully', 'success');
+          showStats(jsonData);
+        } else {
+          jsonData = null;
+          importBtn.disabled = true;
+        }
+      } catch (err) {
+        showStatus('Invalid JSON: ' + err.message, 'error');
+        importBtn.disabled = true;
+      }
+    });
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          jsonData = JSON.parse(e.target.result);
+          fileNameEl.textContent = file.name;
+          importBtn.disabled = false;
+          showStatus(`Loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'success');
+          showStats(jsonData);
+        } catch (err) {
+          showStatus('Invalid JSON file: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status show ' + type;
+    }
+
+    function showStats(data) {
+      let nodes = 0, frames = 0, texts = 0;
+      function count(n) {
+        if (!n) return;
+        nodes++;
+        if (n.type === 'FRAME') frames++;
+        if (n.type === 'TEXT') texts++;
+        if (n.children) n.children.forEach(count);
+        // Count Penma nodes too
+        if (n.rootNode) countPenma(n.rootNode);
+      }
+      function countPenma(n) {
+        if (!n) return;
+        nodes++;
+        if (n.children && n.children.length > 0) frames++;
+        if (n.textContent) texts++;
+        if (n.children) n.children.forEach(countPenma);
+      }
+      if (data.document) count(data.document);
+      else if (data.rootNode) countPenma(data.rootNode);
+      else if (data.type) count(data);
+
+      document.getElementById('statNodes').textContent = nodes + ' nodes';
+      document.getElementById('statFrames').textContent = frames + ' frames';
+      document.getElementById('statTexts').textContent = texts + ' texts';
+      statsEl.className = 'stats show';
+    }
+
+    // Import button
+    importBtn.addEventListener('click', () => {
+      if (!jsonData) return;
+      importBtn.disabled = true;
+      progressEl.className = 'progress show';
+      progressBar.style.width = '10%';
+      showStatus('Importing to Figma...', 'info');
+
+      parent.postMessage({ pluginMessage: { type: 'import', data: jsonData } }, '*');
+    });
+
+    // Messages from plugin code
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+      if (msg.type === 'progress') {
+        progressBar.style.width = msg.percent + '%';
+      }
+      if (msg.type === 'done') {
+        progressBar.style.width = '100%';
+        showStatus(`Imported ${msg.count} nodes successfully!`, 'success');
+        importBtn.disabled = false;
+      }
+      if (msg.type === 'error') {
+        showStatus('Error: ' + msg.message, 'error');
+        importBtn.disabled = false;
+        progressEl.className = 'progress';
+      }
+    };
+  </script>
+</body>
+</html>

@@ -20,7 +20,6 @@ interface MeasureLine {
  */
 export const MeasureOverlay: React.FC = () => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
-  const hoveredId = useEditorStore((s) => s.hoveredId);
   const camera = useEditorStore((s) => s.camera);
 
   const [altHeld, setAltHeld] = useState(false);
@@ -68,24 +67,18 @@ export const MeasureOverlay: React.FC = () => {
     const selRect = selectedEl.getBoundingClientRect();
     const result: MeasureLine[] = [];
 
-    // If hovering a different element, measure between selected and hovered
-    if (hoveredId && hoveredId !== selectedIds[0]) {
-      const hoverEl = document.querySelector(`[data-penma-id="${hoveredId}"]`);
-      if (hoverEl) {
-        const hovRect = hoverEl.getBoundingClientRect();
-        measureBetweenRects(selRect, hovRect, result);
-      }
-    } else {
-      // No hover target — measure to parent edges
-      const parentEl = selectedEl.parentElement;
-      if (parentEl) {
-        const parRect = parentEl.getBoundingClientRect();
-        measureToParent(selRect, parRect, result);
-      }
+    // Measure selected element to its parent edges
+    const parentEl = selectedEl.parentElement;
+    if (parentEl) {
+      const parRect = parentEl.getBoundingClientRect();
+      measureToParent(selRect, parRect, result);
+
+      // Also measure to siblings (nearest in each direction)
+      measureToSiblings(selectedEl, selRect, result);
     }
 
     setLines(result);
-  }, [altHeld, selectedIds, hoveredId, mousePos]);
+  }, [altHeld, selectedIds, mousePos]);
 
   useEffect(() => {
     if (!altHeld) { setLines([]); return; }
@@ -158,6 +151,65 @@ function measureBetweenRects(a: DOMRect, b: DOMRect, out: MeasureLine[]) {
       const x = Math.max(a.right, b.right) + 12;
       out.push({ x1: x, y1: Math.min(a.bottom, b.bottom), x2: x, y2: Math.max(a.bottom, b.bottom), label: `${d}`, orientation: 'v' });
     }
+  }
+}
+
+function measureToSiblings(el: Element, selRect: DOMRect, out: MeasureLine[]) {
+  const parent = el.parentElement;
+  if (!parent) return;
+
+  const siblings = Array.from(parent.children).filter((c) => c !== el && c.getBoundingClientRect().width > 0);
+  if (siblings.length === 0) return;
+
+  const cx = selRect.left + selRect.width / 2;
+  const cy = selRect.top + selRect.height / 2;
+
+  // Find nearest sibling in each direction
+  let nearestLeft: { el: Element; dist: number } | null = null;
+  let nearestRight: { el: Element; dist: number } | null = null;
+  let nearestTop: { el: Element; dist: number } | null = null;
+  let nearestBottom: { el: Element; dist: number } | null = null;
+
+  for (const sib of siblings) {
+    const r = sib.getBoundingClientRect();
+
+    // Left neighbor
+    if (r.right <= selRect.left) {
+      const d = selRect.left - r.right;
+      if (!nearestLeft || d < nearestLeft.dist) nearestLeft = { el: sib, dist: d };
+    }
+    // Right neighbor
+    if (r.left >= selRect.right) {
+      const d = r.left - selRect.right;
+      if (!nearestRight || d < nearestRight.dist) nearestRight = { el: sib, dist: d };
+    }
+    // Top neighbor
+    if (r.bottom <= selRect.top) {
+      const d = selRect.top - r.bottom;
+      if (!nearestTop || d < nearestTop.dist) nearestTop = { el: sib, dist: d };
+    }
+    // Bottom neighbor
+    if (r.top >= selRect.bottom) {
+      const d = r.top - selRect.bottom;
+      if (!nearestBottom || d < nearestBottom.dist) nearestBottom = { el: sib, dist: d };
+    }
+  }
+
+  if (nearestLeft && nearestLeft.dist > 0) {
+    const r = nearestLeft.el.getBoundingClientRect();
+    out.push({ x1: r.right, y1: cy, x2: selRect.left, y2: cy, label: `${Math.round(nearestLeft.dist)}`, orientation: 'h' });
+  }
+  if (nearestRight && nearestRight.dist > 0) {
+    const r = nearestRight.el.getBoundingClientRect();
+    out.push({ x1: selRect.right, y1: cy, x2: r.left, y2: cy, label: `${Math.round(nearestRight.dist)}`, orientation: 'h' });
+  }
+  if (nearestTop && nearestTop.dist > 0) {
+    const r = nearestTop.el.getBoundingClientRect();
+    out.push({ x1: cx, y1: r.bottom, x2: cx, y2: selRect.top, label: `${Math.round(nearestTop.dist)}`, orientation: 'v' });
+  }
+  if (nearestBottom && nearestBottom.dist > 0) {
+    const r = nearestBottom.el.getBoundingClientRect();
+    out.push({ x1: cx, y1: selRect.bottom, x2: cx, y2: r.top, label: `${Math.round(nearestBottom.dist)}`, orientation: 'v' });
   }
 }
 

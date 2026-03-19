@@ -15,7 +15,10 @@
       "Bash(pnpm build:*)",
       "Bash(lsof -ti:3000)",
       "Bash(xargs kill:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm:*)"
     ]
   }
 }

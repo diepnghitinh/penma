@@ -7,6 +7,7 @@ import { DocumentRenderer } from './DocumentRenderer';
 import { SelectionOverlay } from './SelectionOverlay';
 import { AutoLayoutOverlay } from './AutoLayoutOverlay';
 import { MeasureOverlay } from './MeasureOverlay';
+import { MarqueeSelect } from './MarqueeSelect';
 
 export const Canvas: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
@@ -210,6 +211,7 @@ export const Canvas: React.FC = () => {
 
       <AutoLayoutOverlay />
       <MeasureOverlay />
+      <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
     </div>
   );

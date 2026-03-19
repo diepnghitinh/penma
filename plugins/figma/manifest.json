@@ -1,0 +1,14 @@
+{
+  "name": "Penma Import",
+  "id": "penma-import",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "documentAccess": "dynamic-page",
+  "editorType": ["figma"],
+  "capabilities": [],
+  "permissions": [],
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  }
+}
