@@ -16,6 +16,7 @@ import {
   Palette,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
+import { EditSettingsPopover } from './EditSettingsPopover';
 import type { Tool } from '@/types/editor';
 
 const tools: { id: Tool; icon: React.ElementType; label: string; shortcut: string }[] = [
@@ -37,7 +38,7 @@ export const TopToolbar: React.FC = () => {
   const canRedo = useEditorStore((s) => s.canRedo);
   const setShowImportDialog = useEditorStore((s) => s.setShowImportDialog);
   const setShowExportDialog = useEditorStore((s) => s.setShowExportDialog);
-  const document = useEditorStore((s) => s.document);
+  const documents = useEditorStore((s) => s.documents);
   const togglePanel = useEditorStore((s) => s.togglePanel);
   const openPanels = useEditorStore((s) => s.openPanels);
 
@@ -185,8 +186,9 @@ export const TopToolbar: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Import/Export */}
+      {/* Right: Settings + Import/Export */}
       <div className="flex items-center gap-2">
+        <EditSettingsPopover />
         <button
           onClick={() => setShowImportDialog(true)}
           className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium text-white cursor-pointer"
@@ -201,7 +203,7 @@ export const TopToolbar: React.FC = () => {
           <Import size={14} />
           Import URL
         </button>
-        {document && (
+        {documents.length > 0 && (
           <button
             onClick={() => setShowExportDialog(true)}
             className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium cursor-pointer"

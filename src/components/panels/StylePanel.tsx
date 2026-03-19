@@ -98,8 +98,17 @@ function parseColorToHex(color: string): string {
 }
 
 export const StylePanel: React.FC = () => {
-  const document = useEditorStore((s) => s.document);
+  const documents = useEditorStore((s) => s.documents);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+
+  // Find the document containing the selected node
+  const document = (() => {
+    if (selectedIds.length === 0) return null;
+    for (const doc of documents) {
+      if (findNodeById(doc.rootNode, selectedIds[0])) return doc;
+    }
+    return null;
+  })();
 
   if (!document || selectedIds.length === 0) {
     return (

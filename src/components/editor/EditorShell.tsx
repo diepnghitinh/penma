@@ -35,7 +35,7 @@ export const EditorShell: React.FC = () => {
       },
       'Escape': () => {
         const state = useEditorStore.getState();
-        if (state.showImportDialog) {
+        if (state.showImportDialog && !state.isImporting) {
           state.setShowImportDialog(false);
         } else if (state.showExportDialog) {
           state.setShowExportDialog(false);
@@ -43,8 +43,20 @@ export const EditorShell: React.FC = () => {
           state.clearSelection();
         }
       },
-      'Delete': () => {},
-      'Backspace': () => {},
+      'Delete': () => {
+        const state = useEditorStore.getState();
+        if (state.selectedIds.length === 0 && state.activeDocumentId && state.documents.length > 0) {
+          state.pushHistory('Delete frame');
+          state.removeDocument(state.activeDocumentId);
+        }
+      },
+      'Backspace': () => {
+        const state = useEditorStore.getState();
+        if (state.selectedIds.length === 0 && state.activeDocumentId && state.documents.length > 0) {
+          state.pushHistory('Delete frame');
+          state.removeDocument(state.activeDocumentId);
+        }
+      },
       '$mod+0': (e: KeyboardEvent) => {
         e.preventDefault();
         useEditorStore.getState().resetView();

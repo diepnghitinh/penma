@@ -205,7 +205,9 @@ const SpacingScale: React.FC<{ values: number[] }> = ({ values }) => (
 // ── Main panel ──────────────────────────────────────────────
 
 export const DesignSystemPanel: React.FC = () => {
-  const document = useEditorStore((s) => s.document);
+  const documents = useEditorStore((s) => s.documents);
+  const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
+  const document = documents.find((d) => d.id === activeDocumentId) ?? documents[0] ?? null;
 
   const designSystem = useMemo<DesignSystem | null>(() => {
     if (!document) return null;

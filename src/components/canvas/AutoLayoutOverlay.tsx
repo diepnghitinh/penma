@@ -12,7 +12,9 @@ import { findNodeById } from '@/lib/utils/tree-utils';
  */
 export const AutoLayoutOverlay: React.FC = () => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
-  const document = useEditorStore((s) => s.document);
+  const documents = useEditorStore((s) => s.documents);
+  const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
+  const document = documents.find((d) => d.id === activeDocumentId) ?? documents[0] ?? null;
   const camera = useEditorStore((s) => s.camera);
 
   const [overlayData, setOverlayData] = useState<{

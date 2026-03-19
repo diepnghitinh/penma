@@ -2,13 +2,20 @@ import type { StateCreator } from 'zustand';
 import { produce } from 'immer';
 import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
-import { updateNodeById } from '@/lib/utils/tree-utils';
+import { updateNodeById, findNodeById } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
 
 export interface DocumentSlice {
-  document: PenmaDocument | null;
+  documents: PenmaDocument[];
+  activeDocumentId: string | null;
   isImporting: boolean;
   importError: string | null;
+  /** Backward-compat: returns the active document */
+  document: PenmaDocument | null;
+  addDocument: (doc: PenmaDocument) => void;
+  removeDocument: (docId: string) => void;
+  setActiveDocument: (docId: string) => void;
+  /** Legacy — adds or replaces the single doc */
   setDocument: (doc: PenmaDocument) => void;
   clearDocument: () => void;
   setImporting: (importing: boolean) => void;
@@ -26,108 +33,154 @@ export interface DocumentSlice {
   updateSizing: (nodeId: string, axis: 'horizontal' | 'vertical', mode: 'fixed' | 'hug' | 'fill') => void;
 }
 
+/**
+ * Helper: apply a mutation to whichever document contains the given nodeId.
+ * Returns the updated documents array.
+ */
+function mutateNodeInDocs(
+  docs: PenmaDocument[],
+  nodeId: string,
+  mutator: (draft: PenmaDocument) => void
+): PenmaDocument[] {
+  return docs.map((doc) => {
+    if (findNodeById(doc.rootNode, nodeId)) {
+      return produce(doc, mutator);
+    }
+    return doc;
+  });
+}
+
+const FRAME_GAP = 80; // px between frames on canvas
+
 export const createDocumentSlice: StateCreator<
   EditorState,
   [],
   [],
   DocumentSlice
-> = (set) => ({
-  document: null,
+> = (set, get) => ({
+  documents: [],
+  activeDocumentId: null,
   isImporting: false,
   importError: null,
 
+  // Backward-compat: computed on access but NOT reactive.
+  // Components should use the selector: useEditorStore((s) => s.documents.find(...))
+  // This field is only for non-reactive reads.
+  document: null as PenmaDocument | null,
+
+  addDocument: (doc) =>
+    set((state) => {
+      // Position new frame to the right of existing frames
+      let maxRight = 0;
+      for (const d of state.documents) {
+        const right = d.canvasX + d.viewport.width;
+        if (right > maxRight) maxRight = right;
+      }
+      const positioned = {
+        ...doc,
+        canvasX: state.documents.length > 0 ? maxRight + FRAME_GAP : 0,
+        canvasY: 0,
+      };
+      return {
+        documents: [...state.documents, positioned],
+        activeDocumentId: doc.id,
+        isImporting: false,
+        importError: null,
+      };
+    }),
+
+  removeDocument: (docId) =>
+    set((state) => {
+      const filtered = state.documents.filter((d) => d.id !== docId);
+      return {
+        documents: filtered,
+        activeDocumentId:
+          state.activeDocumentId === docId
+            ? filtered[0]?.id ?? null
+            : state.activeDocumentId,
+      };
+    }),
+
+  setActiveDocument: (docId) => set({ activeDocumentId: docId }),
+
   setDocument: (doc) =>
-    set({ document: doc, isImporting: false, importError: null }),
+    set((state) => {
+      const positioned = { ...doc, canvasX: doc.canvasX ?? 0, canvasY: doc.canvasY ?? 0 };
+      // Position to the right of existing frames
+      let maxRight = 0;
+      for (const d of state.documents) {
+        const right = d.canvasX + d.viewport.width;
+        if (right > maxRight) maxRight = right;
+      }
+      if (state.documents.length > 0) {
+        positioned.canvasX = maxRight + FRAME_GAP;
+      }
+      return {
+        documents: [...state.documents, positioned],
+        activeDocumentId: doc.id,
+        isImporting: false,
+        importError: null,
+      };
+    }),
 
-  clearDocument: () =>
-    set({ document: null }),
+  clearDocument: () => set({ documents: [], activeDocumentId: null }),
 
-  setImporting: (importing) =>
-    set({ isImporting: importing, importError: null }),
-
-  setImportError: (error) =>
-    set({ importError: error, isImporting: false }),
+  setImporting: (importing) => set({ isImporting: importing, importError: null }),
+  setImportError: (error) => set({ importError: error, isImporting: false }),
 
   updateNodeStyles: (nodeId, overrides) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           Object.assign(node.styles.overrides, overrides);
         });
-      });
-      return { document: newDoc };
-    }),
+      }),
+    })),
 
   updateNodeText: (nodeId, text) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          node.textContent = text;
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
+      }),
+    })),
 
   toggleNodeVisibility: (nodeId) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          node.visible = !node.visible;
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { node.visible = !node.visible; });
+      }),
+    })),
 
   toggleNodeLock: (nodeId) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          node.locked = !node.locked;
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { node.locked = !node.locked; });
+      }),
+    })),
 
   renameNode: (nodeId, name) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          node.name = name;
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { node.name = name; });
+      }),
+    })),
 
   updateNodeBounds: (nodeId, bounds) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          Object.assign(node.bounds, bounds);
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
+      }),
+    })),
 
   toggleAutoLayout: (nodeId) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           if (node.autoLayout) {
-            // Remove auto layout from parent and sizing from children
             node.autoLayout = undefined;
             node.sizing = undefined;
-            for (const child of node.children) {
-              child.sizing = undefined;
-            }
+            for (const child of node.children) child.sizing = undefined;
           } else {
-            // Detect existing layout from computed styles
             const display = node.styles.computed['display'] || '';
             const flexDir = node.styles.computed['flex-direction'] || '';
             const gap = parseFloat(node.styles.computed['gap'] || '0') || 0;
@@ -145,116 +198,56 @@ export const createDocumentSlice: StateCreator<
               else if (flexDir === 'row' || flexDir === 'row-reverse') direction = 'horizontal';
             }
 
-            const mapJustify = (v: string) => {
-              if (v === 'center') return 'center' as const;
-              if (v === 'flex-end' || v === 'end') return 'end' as const;
-              if (v === 'space-between') return 'space-between' as const;
-              return 'start' as const;
-            };
-            const mapAlign = (v: string) => {
-              if (v === 'center') return 'center' as const;
-              if (v === 'flex-end' || v === 'end') return 'end' as const;
-              if (v === 'stretch') return 'stretch' as const;
-              if (v === 'baseline') return 'baseline' as const;
-              return 'start' as const;
-            };
+            const mj = (v: string) => { if (v === 'center') return 'center' as const; if (v === 'flex-end' || v === 'end') return 'end' as const; if (v === 'space-between') return 'space-between' as const; return 'start' as const; };
+            const ma = (v: string) => { if (v === 'center') return 'center' as const; if (v === 'flex-end' || v === 'end') return 'end' as const; if (v === 'stretch') return 'stretch' as const; if (v === 'baseline') return 'baseline' as const; return 'start' as const; };
 
-            const padding = { top: pt, right: pr, bottom: pb, left: pl };
-            const independentPadding = !(pt === pr && pr === pb && pb === pl);
-
-            const autoLayout: AutoLayout = {
-              ...DEFAULT_AUTO_LAYOUT,
-              direction,
-              gap,
-              padding,
-              independentPadding,
-              primaryAxisAlign: mapJustify(justify),
-              counterAxisAlign: mapAlign(align),
-              reverse: flexDir === 'row-reverse' || flexDir === 'column-reverse',
-            };
+            const autoLayout: AutoLayout = { ...DEFAULT_AUTO_LAYOUT, direction, gap, padding: { top: pt, right: pr, bottom: pb, left: pl }, independentPadding: !(pt === pr && pr === pb && pb === pl), primaryAxisAlign: mj(justify), counterAxisAlign: ma(align), reverse: flexDir === 'row-reverse' || flexDir === 'column-reverse' };
             node.autoLayout = autoLayout;
             node.sizing = { ...DEFAULT_SIZING };
 
-            // Detect child sizing from their computed styles
-            const isParentHoriz = direction === 'horizontal' || direction === 'wrap';
+            const isHoriz = direction === 'horizontal' || direction === 'wrap';
             for (const child of node.children) {
               const cs = child.styles.computed;
-              const flexGrow = parseFloat(cs['flex-grow'] || '0') || 0;
-              const alignSelf = cs['align-self'] || '';
+              const fg = parseFloat(cs['flex-grow'] || '0') || 0;
+              const as2 = cs['align-self'] || '';
               const w = cs['width'] || 'auto';
               const h = cs['height'] || 'auto';
-
               let hz: 'fixed' | 'hug' | 'fill' = 'hug';
               let vt: 'fixed' | 'hug' | 'fill' = 'hug';
-
-              if (isParentHoriz) {
-                if (flexGrow > 0 || w.includes('%')) hz = 'fill';
-                else if (w !== 'auto') hz = 'fixed';
-                if (alignSelf === 'stretch' || autoLayout.counterAxisAlign === 'stretch') vt = 'fill';
-                else if (h !== 'auto' && !h.includes('%')) vt = 'fixed';
-              } else {
-                if (flexGrow > 0 || h.includes('%')) vt = 'fill';
-                else if (h !== 'auto') vt = 'fixed';
-                if (alignSelf === 'stretch' || autoLayout.counterAxisAlign === 'stretch') hz = 'fill';
-                else if (w !== 'auto' && !w.includes('%')) hz = 'fixed';
-              }
-
+              if (isHoriz) { if (fg > 0 || w.includes('%')) hz = 'fill'; else if (w !== 'auto') hz = 'fixed'; if (as2 === 'stretch' || autoLayout.counterAxisAlign === 'stretch') vt = 'fill'; else if (h !== 'auto' && !h.includes('%')) vt = 'fixed'; }
+              else { if (fg > 0 || h.includes('%')) vt = 'fill'; else if (h !== 'auto') vt = 'fixed'; if (as2 === 'stretch' || autoLayout.counterAxisAlign === 'stretch') hz = 'fill'; else if (w !== 'auto' && !w.includes('%')) hz = 'fixed'; }
               child.sizing = { horizontal: hz, vertical: vt };
             }
           }
         });
-      });
-      return { document: newDoc };
-    }),
+      }),
+    })),
 
   updateAutoLayout: (nodeId, patch) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          if (node.autoLayout) {
-            Object.assign(node.autoLayout, patch);
-          }
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) Object.assign(node.autoLayout, patch); });
+      }),
+    })),
 
   updateAutoLayoutPadding: (nodeId, side, value) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          if (node.autoLayout) {
-            node.autoLayout.padding[side] = value;
-          }
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) node.autoLayout.padding[side] = value; });
+      }),
+    })),
 
   setUniformPadding: (nodeId, value) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          if (node.autoLayout) {
-            node.autoLayout.padding = { top: value, right: value, bottom: value, left: value };
-          }
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) node.autoLayout.padding = { top: value, right: value, bottom: value, left: value }; });
+      }),
+    })),
 
   updateSizing: (nodeId, axis, mode) =>
-    set((state) => {
-      if (!state.document) return state;
-      const newDoc = produce(state.document, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          if (!node.sizing) node.sizing = { ...DEFAULT_SIZING };
-          node.sizing[axis] = mode;
-        });
-      });
-      return { document: newDoc };
-    }),
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { if (!node.sizing) node.sizing = { ...DEFAULT_SIZING }; node.sizing[axis] = mode; });
+      }),
+    })),
 });

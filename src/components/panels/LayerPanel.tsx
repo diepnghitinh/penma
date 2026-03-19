@@ -180,50 +180,53 @@ const LayerItem: React.FC<LayerItemProps> = ({ node, depth, expanded }) => {
 // ─── Layer panel ────────────────────────────────────────────
 
 export const LayerPanel: React.FC = () => {
-  const doc = useEditorStore((s) => s.document);
+  const documents = useEditorStore((s) => s.documents);
+  const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
+  const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
+  const removeDocument = useEditorStore((s) => s.removeDocument);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const expanded = useExpandedState();
   const prevSelectedRef = useRef<string[]>([]);
 
-  // Auto-expand ancestors when selection changes (e.g. from canvas click)
+  // Auto-expand ancestors when selection changes
   useEffect(() => {
-    if (!doc || selectedIds.length === 0) return;
-
-    // Only react to *new* selections, not removals
+    if (documents.length === 0 || selectedIds.length === 0) return;
     const added = selectedIds.filter((id) => !prevSelectedRef.current.includes(id));
     prevSelectedRef.current = selectedIds;
-
     if (added.length === 0) return;
 
     const toExpand: string[] = [];
     for (const id of added) {
-      const ancestors = getAncestorIds(doc.rootNode, id);
-      toExpand.push(...ancestors);
-    }
-    if (toExpand.length > 0) {
-      expanded.expandAll(toExpand);
-    }
-  }, [selectedIds, doc, expanded]);
-
-  // Auto-expand first two levels on initial document load
-  const initialExpanded = useRef(false);
-  useEffect(() => {
-    if (!doc || initialExpanded.current) return;
-    initialExpanded.current = true;
-    const toExpand: string[] = [];
-    const walk = (node: PenmaNode, depth: number) => {
-      if (depth < 2) {
-        toExpand.push(node.id);
-        for (const child of node.children) walk(child, depth + 1);
+      for (const doc of documents) {
+        const ancestors = getAncestorIds(doc.rootNode, id);
+        if (ancestors.length > 0) {
+          toExpand.push(doc.id, ...ancestors);
+          break;
+        }
       }
-    };
-    walk(doc.rootNode, 0);
-    expanded.expandAll(toExpand);
-  }, [doc, expanded]);
+    }
+    if (toExpand.length > 0) expanded.expandAll(toExpand);
+  }, [selectedIds, documents, expanded]);
 
-  if (!doc) {
+  // Auto-expand first two levels on document load
+  const expandedDocIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const toExpand: string[] = [];
+    for (const doc of documents) {
+      if (expandedDocIds.current.has(doc.id)) continue;
+      expandedDocIds.current.add(doc.id);
+      toExpand.push(doc.id);
+      const walk = (node: PenmaNode, depth: number) => {
+        if (depth < 2) { toExpand.push(node.id); for (const child of node.children) walk(child, depth + 1); }
+      };
+      walk(doc.rootNode, 0);
+    }
+    if (toExpand.length > 0) expanded.expandAll(toExpand);
+  }, [documents, expanded]);
+
+  if (documents.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center p-4 text-neutral-400">
+      <div className="flex h-full flex-col items-center justify-center p-4" style={{ color: 'var(--penma-text-muted)' }}>
         <Layers size={24} className="mb-2" />
         <span className="text-xs">No layers</span>
       </div>
@@ -236,9 +239,51 @@ export const LayerPanel: React.FC = () => {
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)', fontFamily: 'var(--font-heading)' }}>
           Layers
         </span>
+        <span className="ml-auto text-[9px] rounded-full px-1.5 py-0.5" style={{ background: 'var(--penma-primary-light)', color: 'var(--penma-primary)' }}>
+          {documents.length}
+        </span>
       </div>
-      <div className="flex-1 overflow-y-auto py-1">
-        <LayerItem node={doc.rootNode} depth={0} expanded={expanded} />
+      <div className="flex-1 overflow-y-auto py-1 penma-scrollbar">
+        {documents.map((doc) => {
+          const isActive = doc.id === activeDocumentId;
+          const isDocExpanded = expanded.ids.has(doc.id);
+          let hostname = doc.sourceUrl;
+          try { hostname = new URL(doc.sourceUrl).hostname; } catch {}
+          return (
+            <div key={doc.id}>
+              {/* Frame header */}
+              <div
+                className="group flex h-7 items-center gap-1 px-1 text-xs cursor-pointer"
+                style={{
+                  background: isActive ? 'var(--penma-primary-light)' : 'transparent',
+                  color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-secondary)',
+                  fontWeight: 600,
+                  fontFamily: 'var(--font-heading)',
+                }}
+                onClick={() => { setActiveDocument(doc.id); expanded.toggle(doc.id); }}
+              >
+                <button className="flex h-5 w-5 items-center justify-center" onClick={(e) => { e.stopPropagation(); expanded.toggle(doc.id); }}>
+                  {isDocExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </button>
+                <span className="truncate flex-1">{hostname}</span>
+                <span className="text-[9px] font-normal" style={{ color: 'var(--penma-text-muted)' }}>
+                  {doc.viewport.width}×{doc.viewport.height}
+                </span>
+                <button
+                  className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 ml-1"
+                  style={{ color: 'var(--penma-text-muted)' }}
+                  onClick={(e) => { e.stopPropagation(); removeDocument(doc.id); }}
+                  title="Remove frame"
+                >
+                  ×
+                </button>
+              </div>
+              {isDocExpanded && (
+                <LayerItem node={doc.rootNode} depth={1} expanded={expanded} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -419,6 +419,8 @@ export async function POST(request: NextRequest) {
       viewport: { width: viewportWidth, height: viewportHeight },
       rootNode,
       assets: {},
+      canvasX: 0,
+      canvasY: 0,
     };
 
     return NextResponse.json({ success: true, document: doc });

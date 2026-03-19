@@ -43,8 +43,8 @@ export const createSelectionSlice: StateCreator<
 
   selectAll: () => {
     const state = get();
-    if (!state.document) return;
-    const allNodes = flattenTree(state.document.rootNode);
+    if (state.documents.length === 0) return;
+    const allNodes = state.documents.flatMap((d) => flattenTree(d.rootNode));
     set({ selectedIds: allNodes.map((n) => n.id) });
   },
 

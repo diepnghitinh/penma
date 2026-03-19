@@ -101,16 +101,27 @@ export const ImportUrlDialog: React.FC = () => {
             <Globe size={18} className="text-blue-500" />
             <h2 className="text-base font-semibold text-neutral-800">Import from URL</h2>
           </div>
-          <button
-            onClick={() => setShowImportDialog(false)}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
-          >
-            <X size={16} />
-          </button>
+          {!isImporting && (
+            <button
+              onClick={() => setShowImportDialog(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         {/* Body */}
         <div className="p-5">
+          {/* Loading progress — shown prominently at top when importing */}
+          {isImporting && (
+            <div className="mb-4">
+              <ImportProgress viewport={viewport} />
+            </div>
+          )}
+
+          {/* Form — disabled during import */}
+          <div style={{ opacity: isImporting ? 0.4 : 1, pointerEvents: isImporting ? 'none' : 'auto', transition: 'opacity 200ms' }}>
           {/* URL input */}
           <div className="flex gap-2">
             <input
@@ -211,18 +222,6 @@ export const ImportUrlDialog: React.FC = () => {
             )}
           </div>
 
-          {/* Error */}
-          {importError && (
-            <div className="mt-3 rounded-lg bg-red-50 border border-red-100 px-4 py-2.5 text-sm text-red-600">
-              {importError}
-            </div>
-          )}
-
-          {/* Loading progress */}
-          {isImporting && (
-            <ImportProgress viewport={viewport} />
-          )}
-
           {/* Example URLs */}
           <div className="mt-4">
             <p className="text-xs text-neutral-400 mb-2">Try an example:</p>
@@ -242,6 +241,14 @@ export const ImportUrlDialog: React.FC = () => {
               ))}
             </div>
           </div>
+          </div>{/* end form wrapper */}
+
+          {/* Error — shown outside the disabled wrapper */}
+          {importError && (
+            <div className="mt-3 rounded-lg bg-red-50 border border-red-100 px-4 py-2.5 text-sm text-red-600">
+              {importError}
+            </div>
+          )}
         </div>
       </div>
     </div>

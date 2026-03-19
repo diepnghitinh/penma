@@ -26,6 +26,10 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
   const setHovered = useEditorStore((s) => s.setHovered);
   const activeTool = useEditorStore((s) => s.activeTool);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const editEnabled = useEditorStore((s) => s.editEnabled);
+  const editSettings = useEditorStore((s) => s.editSettings);
+  const updateNodeText = useEditorStore((s) => s.updateNodeText);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -34,6 +38,50 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       select(node.id, e.shiftKey);
     },
     [activeTool, node.id, select]
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!editEnabled || !editSettings.textEditable) return;
+      // Allow editing if node has textContent, or is a leaf with visible text
+      const hasEditableText = node.textContent || (e.currentTarget as HTMLElement).textContent?.trim();
+      if (!hasEditableText) return;
+      e.stopPropagation();
+      const el = e.currentTarget as HTMLElement;
+      el.contentEditable = 'true';
+      el.focus();
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+
+      const originalText = el.textContent?.trim() || '';
+      const handleBlur = () => {
+        el.contentEditable = 'false';
+        const newText = el.textContent?.trim() || '';
+        if (newText !== originalText) {
+          pushHistory('Edit text');
+          updateNodeText(node.id, newText);
+        }
+        el.removeEventListener('blur', handleBlur);
+        el.removeEventListener('keydown', handleKey);
+      };
+      const handleKey = (ke: KeyboardEvent) => {
+        if (ke.key === 'Enter' && !ke.shiftKey) {
+          ke.preventDefault();
+          el.blur();
+        }
+        if (ke.key === 'Escape') {
+          el.textContent = originalText;
+          el.blur();
+        }
+      };
+      el.addEventListener('blur', handleBlur);
+      el.addEventListener('keydown', handleKey);
+    },
+    [editEnabled, editSettings.textEditable, node.textContent, node.id, pushHistory, updateNodeText]
   );
 
   const handleMouseEnter = useCallback(() => {
@@ -174,28 +222,38 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
   const Tag = tagName as keyof React.JSX.IntrinsicElements;
   const isVoid = VOID_ELEMENTS.has(node.tagName);
 
+  // Void elements (input, br, hr, etc.) cannot have children
+  if (isVoid) {
+    return (
+      <Tag
+        data-penma-id={node.id}
+        style={style}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      />
+    );
+  }
+
   return (
     <Tag
       data-penma-id={node.id}
       style={style}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {!isVoid && (
-        <>
-          {node.textContent && node.children.length === 0
-            ? node.textContent
-            : node.children.map((child) => (
-                <DocumentRendererMemo
-                  key={child.id}
-                  node={child}
-                  depth={depth + 1}
-                  parentAutoLayout={node.autoLayout}
-                />
-              ))}
-        </>
-      )}
+      {node.textContent && node.children.length === 0
+        ? node.textContent
+        : node.children.map((child) => (
+            <DocumentRendererMemo
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              parentAutoLayout={node.autoLayout}
+            />
+          ))}
     </Tag>
   );
 };

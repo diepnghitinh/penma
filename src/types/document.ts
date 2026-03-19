@@ -5,6 +5,9 @@ export interface PenmaDocument {
   viewport: { width: number; height: number };
   rootNode: PenmaNode;
   assets: Record<string, AssetReference>;
+  /** Position of this frame on the canvas (top-left corner in document space) */
+  canvasX: number;
+  canvasY: number;
 }
 
 export interface PenmaNode {

@@ -3,7 +3,7 @@ import type { PenmaDocument } from '@/types/document';
 import type { EditorState } from '../editor-store';
 
 interface HistoryEntry {
-  document: PenmaDocument;
+  documents: PenmaDocument[];
   description: string;
 }
 
@@ -30,11 +30,11 @@ export const createHistorySlice: StateCreator<
 
   pushHistory: (description) => {
     const state = get();
-    if (!state.document) return;
+    if (state.documents.length === 0) return;
     set((s) => ({
       undoStack: [
         ...s.undoStack.slice(-MAX_HISTORY + 1),
-        { document: JSON.parse(JSON.stringify(s.document)), description },
+        { documents: JSON.parse(JSON.stringify(s.documents)), description },
       ],
       redoStack: [],
     }));
@@ -42,28 +42,28 @@ export const createHistorySlice: StateCreator<
 
   undo: () => {
     const state = get();
-    if (state.undoStack.length === 0 || !state.document) return;
+    if (state.undoStack.length === 0) return;
     const prev = state.undoStack[state.undoStack.length - 1];
     set({
-      document: prev.document,
+      documents: prev.documents,
       undoStack: state.undoStack.slice(0, -1),
       redoStack: [
         ...state.redoStack,
-        { document: JSON.parse(JSON.stringify(state.document)), description: prev.description },
+        { documents: JSON.parse(JSON.stringify(state.documents)), description: prev.description },
       ],
     });
   },
 
   redo: () => {
     const state = get();
-    if (state.redoStack.length === 0 || !state.document) return;
+    if (state.redoStack.length === 0) return;
     const next = state.redoStack[state.redoStack.length - 1];
     set({
-      document: next.document,
+      documents: next.documents,
       redoStack: state.redoStack.slice(0, -1),
       undoStack: [
         ...state.undoStack,
-        { document: JSON.parse(JSON.stringify(state.document)), description: next.description },
+        { documents: JSON.parse(JSON.stringify(state.documents)), description: next.description },
       ],
     });
   },
