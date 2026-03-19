@@ -12,6 +12,7 @@ import { DesignSystemPanel } from '@/components/panels/DesignSystemPanel';
 import { ImportUrlDialog } from '@/components/dialogs/ImportUrlDialog';
 import { ResizablePanel } from '@/components/ui/ResizablePanel';
 import { PageTabs } from '@/components/toolbar/PageTabs';
+import { CanvasContextMenu } from '@/components/canvas/ContextMenu';
 
 export const EditorShell: React.FC = () => {
   const openPanels = useEditorStore((s) => s.openPanels);
@@ -36,6 +37,25 @@ export const EditorShell: React.FC = () => {
         e.preventDefault();
         useEditorStore.getState().redo();
       },
+      '$mod+c': (e: KeyboardEvent) => {
+        e.preventDefault();
+        useEditorStore.getState().copyNodes();
+      },
+      '$mod+x': (e: KeyboardEvent) => {
+        e.preventDefault();
+        useEditorStore.getState().cutNodes();
+      },
+      '$mod+v': (e: KeyboardEvent) => {
+        e.preventDefault();
+        useEditorStore.getState().pasteNodes();
+      },
+      '$mod+d': (e: KeyboardEvent) => {
+        e.preventDefault();
+        // Duplicate = copy + paste
+        const state = useEditorStore.getState();
+        state.copyNodes();
+        state.pasteNodes();
+      },
       '$mod+i': (e: KeyboardEvent) => {
         e.preventDefault();
         useEditorStore.getState().setShowImportDialog(true);
@@ -52,14 +72,20 @@ export const EditorShell: React.FC = () => {
       },
       'Delete': () => {
         const state = useEditorStore.getState();
-        if (state.selectedIds.length === 0 && state.activeDocumentId && state.documents.length > 0) {
+        if (state.selectedIds.length > 0) {
+          state.pushHistory('Delete element');
+          state.deleteNodes(state.selectedIds);
+        } else if (state.activeDocumentId && state.documents.length > 0) {
           state.pushHistory('Delete frame');
           state.removeDocument(state.activeDocumentId);
         }
       },
       'Backspace': () => {
         const state = useEditorStore.getState();
-        if (state.selectedIds.length === 0 && state.activeDocumentId && state.documents.length > 0) {
+        if (state.selectedIds.length > 0) {
+          state.pushHistory('Delete element');
+          state.deleteNodes(state.selectedIds);
+        } else if (state.activeDocumentId && state.documents.length > 0) {
           state.pushHistory('Delete frame');
           state.removeDocument(state.activeDocumentId);
         }
@@ -117,6 +143,7 @@ export const EditorShell: React.FC = () => {
 
       {/* Dialogs */}
       <ImportUrlDialog />
+      <CanvasContextMenu />
     </div>
   );
 };

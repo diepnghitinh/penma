@@ -2,7 +2,7 @@ import type { StateCreator } from 'zustand';
 import { produce } from 'immer';
 import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
-import { updateNodeById, findNodeById } from '@/lib/utils/tree-utils';
+import { updateNodeById, findNodeById, findParentNode } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
 
 export interface DocumentSlice {
@@ -26,6 +26,8 @@ export interface DocumentSlice {
   toggleNodeLock: (nodeId: string) => void;
   renameNode: (nodeId: string, name: string) => void;
   updateNodeBounds: (nodeId: string, bounds: Partial<PenmaNode['bounds']>) => void;
+  addNodeToActiveDocument: (node: PenmaNode) => void;
+  deleteNodes: (nodeIds: string[]) => void;
   toggleAutoLayout: (nodeId: string) => void;
   updateAutoLayout: (nodeId: string, patch: Partial<AutoLayout>) => void;
   updateAutoLayoutPadding: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', value: number) => void;
@@ -171,6 +173,40 @@ export const createDocumentSlice: StateCreator<
         updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
       }),
     })),
+
+  addNodeToActiveDocument: (node) =>
+    set((state) => {
+      const activeDoc = state.documents.find((d) => d.id === state.activeDocumentId) ?? state.documents[0];
+      if (!activeDoc) return state;
+      return {
+        documents: state.documents.map((d) =>
+          d.id === activeDoc.id
+            ? produce(d, (draft) => { draft.rootNode.children.push(node); })
+            : d
+        ),
+      };
+    }),
+
+  deleteNodes: (nodeIds) =>
+    set((state) => {
+      const idsSet = new Set(nodeIds);
+      return {
+        documents: state.documents.map((doc) => {
+          // Check if any of the nodeIds exist in this document
+          const hasMatch = nodeIds.some((id) => findNodeById(doc.rootNode, id));
+          if (!hasMatch) return doc;
+          return produce(doc, (draft) => {
+            for (const nodeId of idsSet) {
+              const parent = findParentNode(draft.rootNode, nodeId);
+              if (parent) {
+                parent.children = parent.children.filter((c) => c.id !== nodeId);
+              }
+            }
+          });
+        }),
+        selectedIds: state.selectedIds.filter((id) => !idsSet.has(id)),
+      };
+    }),
 
   toggleAutoLayout: (nodeId) =>
     set((state) => ({

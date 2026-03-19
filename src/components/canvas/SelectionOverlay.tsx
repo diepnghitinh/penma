@@ -34,36 +34,44 @@ export const SelectionOverlay: React.FC = () => {
   const resizeDir = useRef<ResizeDir>('se');
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, nodeId: '' });
 
-  const updateOverlays = useCallback(() => {
-    const boxes: SelectionBox[] = [];
-    for (const id of selectedIds) {
-      const el = document.querySelector(`[data-penma-id="${id}"]`);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        boxes.push({ id, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
-      }
-    }
-    setSelectionBoxes(boxes);
-
-    if (hoveredId && !selectedIds.includes(hoveredId)) {
-      const el = document.querySelector(`[data-penma-id="${hoveredId}"]`);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        setHoverBox({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-      } else setHoverBox(null);
-    } else setHoverBox(null);
-  }, [selectedIds, hoveredId]);
-
+  // Read DOM rects without causing re-renders on every frame
   useEffect(() => {
     const update = () => {
-      updateOverlays();
+      // Selection boxes
+      const boxes: SelectionBox[] = [];
+      for (const id of selectedIds) {
+        const el = document.querySelector(`[data-penma-id="${id}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          boxes.push({ id, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+        }
+      }
+      setSelectionBoxes((prev) => {
+        if (prev.length !== boxes.length) return boxes;
+        const changed = boxes.some((b, i) => {
+          const p = prev[i];
+          return !p || p.id !== b.id || Math.abs(p.rect.x - b.rect.x) > 0.5 || Math.abs(p.rect.y - b.rect.y) > 0.5 || Math.abs(p.rect.width - b.rect.width) > 0.5 || Math.abs(p.rect.height - b.rect.height) > 0.5;
+        });
+        return changed ? boxes : prev;
+      });
+
+      // Hover box
+      if (hoveredId && !selectedIds.includes(hoveredId)) {
+        const el = document.querySelector(`[data-penma-id="${hoveredId}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          setHoverBox((prev) => {
+            if (prev && Math.abs(prev.x - rect.x) < 0.5 && Math.abs(prev.y - rect.y) < 0.5 && Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) return prev;
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+          });
+        } else setHoverBox(null);
+      } else setHoverBox(null);
+
       rafRef.current = requestAnimationFrame(update);
     };
     rafRef.current = requestAnimationFrame(update);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [updateOverlays]);
-
-  useEffect(() => { updateOverlays(); }, [camera, updateOverlays]);
+  }, [selectedIds, hoveredId]);
 
   // ── Move handlers ──
   const handleMoveStart = useCallback((e: React.PointerEvent) => {
@@ -235,9 +243,20 @@ export const SelectionOverlay: React.FC = () => {
 
       {/* Selection boxes */}
       {selectionBoxes.map(({ id, rect }) => (
-        <div key={id} className="absolute" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
+        <div
+          key={id}
+          className="absolute pointer-events-auto"
+          style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent('penma:contextmenu', {
+              detail: { x: e.clientX, y: e.clientY, nodeId: id },
+            }));
+          }}
+        >
           {/* Selection border */}
-          <div className="absolute inset-0" style={{ border: '2px solid var(--penma-primary)' }} />
+          <div className="absolute inset-0 pointer-events-none" style={{ border: '2px solid var(--penma-primary)' }} />
 
           {/* Move area (pointer-events-auto) */}
           {editEnabled && editSettings.movable && (
@@ -245,8 +264,14 @@ export const SelectionOverlay: React.FC = () => {
               className="absolute inset-0 pointer-events-auto"
               style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
               onPointerDown={handleMoveStart}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('penma:contextmenu', {
+                  detail: { x: e.clientX, y: e.clientY, nodeId: id },
+                }));
+              }}
               onDoubleClick={() => {
-                // Forward double-click to the underlying element for text editing
                 if (!editEnabled || !editSettings.textEditable) return;
                 const el = window.document.querySelector(`[data-penma-id="${id}"]`) as HTMLElement | null;
                 if (!el) return;

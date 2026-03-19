@@ -8,8 +8,10 @@ import { SelectionOverlay } from './SelectionOverlay';
 import { AutoLayoutOverlay } from './AutoLayoutOverlay';
 import { MeasureOverlay } from './MeasureOverlay';
 import { MarqueeSelect } from './MarqueeSelect';
-import { BottomToolbar } from '@/components/toolbar/BottomToolbar';
-import { CanvasContextMenu } from './ContextMenu';
+import dynamic from 'next/dynamic';
+const BottomToolbar = dynamic(() => import('@/components/toolbar/BottomToolbar').then(m => m.BottomToolbar), { ssr: false });
+import { ShapeCreator } from './ShapeCreator';
+// CanvasContextMenu moved to EditorShell for z-index reliability
 
 export const Canvas: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
@@ -28,20 +30,28 @@ export const Canvas: React.FC = () => {
   const isPanningRef = useRef(false);
   const lastPanPos = useRef({ x: 0, y: 0 });
 
-  // Wheel zoom
+  // Wheel/touchpad scroll → pan & zoom
+  // Touchpad two-finger scroll → pan (deltaX/deltaY)
+  // Touchpad pinch → zoom (ctrlKey + deltaY on most browsers)
+  // Mouse wheel → zoom (with Ctrl/Cmd) or vertical pan
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const state = useEditorStore.getState();
+
+      // Pinch-to-zoom (trackpad sends ctrlKey=true for pinch gestures)
       if (e.ctrlKey || e.metaKey) {
         const delta = -e.deltaY * 0.01;
         const newZoom = state.camera.zoom * (1 + delta);
         const rect = canvas.getBoundingClientRect();
         state.zoomTo(newZoom, { x: e.clientX - rect.left, y: e.clientY - rect.top });
       } else {
-        state.pan(-e.deltaX, -e.deltaY);
+        // Two-finger scroll / mouse wheel → pan
+        // deltaMode 0 = pixels, 1 = lines (multiply by ~20)
+        const multiplier = e.deltaMode === 1 ? 20 : 1;
+        state.pan(-e.deltaX * multiplier, -e.deltaY * multiplier);
       }
     };
     canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -113,6 +123,7 @@ export const Canvas: React.FC = () => {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onContextMenu={(e) => e.preventDefault()}
     >
       {/* Dot grid */}
       <div
@@ -213,14 +224,13 @@ export const Canvas: React.FC = () => {
 
       <AutoLayoutOverlay />
       <MeasureOverlay />
+      <ShapeCreator canvasRef={canvasRef} />
       <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
 
       {/* Figma-style bottom toolbar */}
       <BottomToolbar />
 
-      {/* Right-click context menu */}
-      <CanvasContextMenu />
     </div>
   );
 };

@@ -8,6 +8,10 @@ import {
   ArrowDownToLine,
   FileOutput,
   Copy,
+  Clipboard,
+  ClipboardPaste,
+  Scissors,
+  CopyPlus,
   Trash2,
   ChevronRight,
 } from 'lucide-react';
@@ -164,7 +168,7 @@ export const CanvasContextMenu: React.FC = () => {
           top: menuY,
           background: 'var(--penma-surface)',
           borderColor: 'var(--penma-border)',
-          zIndex: 100,
+          zIndex: 9999,
           minWidth: 200,
         }}
       >
@@ -174,55 +178,75 @@ export const CanvasContextMenu: React.FC = () => {
         <MenuDivider />
 
         {/* Move to page — submenu */}
-        {otherPages.length > 0 && (
+        <div
+          className="relative"
+          onMouseEnter={() => setSubMenu('move-to-page')}
+          onMouseLeave={() => setSubMenu(null)}
+        >
           <div
-            className="relative"
-            onMouseEnter={() => setSubMenu('move-to-page')}
-            onMouseLeave={() => setSubMenu(null)}
+            className="flex items-center gap-2 px-3 py-1.5 cursor-pointer"
+            style={{ transition: 'var(--transition-fast)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 cursor-pointer"
-              style={{ transition: 'var(--transition-fast)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <FileOutput size={14} style={{ color: 'var(--penma-text-secondary)' }} />
-              <span className="text-[11px] flex-1" style={{ color: 'var(--penma-text)' }}>Move to page</span>
-              <ChevronRight size={12} style={{ color: 'var(--penma-text-muted)' }} />
-            </div>
-
-            {subMenu === 'move-to-page' && (
-              <div
-                ref={subMenuRef}
-                className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
-                style={{
-                  background: 'var(--penma-surface)',
-                  borderColor: 'var(--penma-border)',
-                  minWidth: 140,
-                  zIndex: 101,
-                }}
-              >
-                {otherPages.map((page) => (
-                  <button
-                    key={page.id}
-                    className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
-                    style={{ color: 'var(--penma-text)', transition: 'var(--transition-fast)' }}
-                    onClick={() => handleMoveToPage(page.id)}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {page.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <FileOutput size={14} style={{ color: 'var(--penma-text-secondary)' }} />
+            <span className="text-[11px] flex-1" style={{ color: 'var(--penma-text)' }}>Move to page</span>
+            <ChevronRight size={12} style={{ color: 'var(--penma-text-muted)' }} />
           </div>
-        )}
+
+          {subMenu === 'move-to-page' && (
+            <div
+              ref={subMenuRef}
+              className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
+              style={{
+                background: 'var(--penma-surface)',
+                borderColor: 'var(--penma-border)',
+                minWidth: 140,
+                zIndex: 10000,
+              }}
+            >
+              {otherPages.map((page) => (
+                <button
+                  key={page.id}
+                  className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
+                  style={{ color: 'var(--penma-text)', transition: 'var(--transition-fast)' }}
+                  onClick={() => handleMoveToPage(page.id)}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {page.name}
+                </button>
+              ))}
+              {/* New page option */}
+              {otherPages.length > 0 && <MenuDivider />}
+              <button
+                className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
+                style={{ color: 'var(--penma-primary)', transition: 'var(--transition-fast)' }}
+                onClick={() => {
+                  pushHistory('Move to new page');
+                  useEditorStore.getState().addPage();
+                  close();
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                + New page
+              </button>
+            </div>
+          )}
+        </div>
 
         <MenuDivider />
 
         <MenuItem icon={ArrowUpToLine} label="Bring to front" shortcut="]" onClick={handleBringToFront} />
         <MenuItem icon={ArrowDownToLine} label="Send to back" shortcut="[" onClick={handleSendToBack} />
+
+        <MenuDivider />
+
+        <MenuItem icon={Clipboard} label="Copy" shortcut="Cmd+C" onClick={() => { useEditorStore.getState().copyNodes(); close(); }} />
+        <MenuItem icon={Scissors} label="Cut" shortcut="Cmd+X" onClick={() => { useEditorStore.getState().cutNodes(); close(); }} />
+        <MenuItem icon={ClipboardPaste} label="Paste" shortcut="Cmd+V" onClick={() => { useEditorStore.getState().pasteNodes(); close(); }} />
+        <MenuItem icon={CopyPlus} label="Duplicate" shortcut="Cmd+D" onClick={() => { const s = useEditorStore.getState(); s.copyNodes(); s.pasteNodes(); close(); }} />
 
         <MenuDivider />
 

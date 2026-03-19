@@ -1,6 +1,9 @@
 import type { StateCreator } from 'zustand';
 import type { Tool, PanelId } from '@/types/editor';
+import type { PenmaNode } from '@/types/document';
+import { v4 as uuid } from 'uuid';
 import { editorConfig } from '@/configs/editor';
+import { findNodeById } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
 
 export interface EditSettings {
@@ -26,6 +29,10 @@ export interface UISlice {
   toggleEditEnabled: () => void;
   setEditSetting: (key: keyof EditSettings, value: boolean) => void;
   toggleEditSetting: (key: keyof EditSettings) => void;
+  clipboard: PenmaNode[];
+  copyNodes: () => void;
+  cutNodes: () => void;
+  pasteNodes: () => void;
 }
 
 export const createUISlice: StateCreator<
@@ -33,7 +40,7 @@ export const createUISlice: StateCreator<
   [],
   [],
   UISlice
-> = (set) => ({
+> = (set, get) => ({
   activeTool: 'select',
   openPanels: ['layers', 'styles'],
   showImportDialog: true,
@@ -71,4 +78,73 @@ export const createUISlice: StateCreator<
     set((state) => ({
       editSettings: { ...state.editSettings, [key]: !state.editSettings[key] },
     })),
+
+  clipboard: [],
+
+  copyNodes: () => {
+    const state = get();
+    if (state.selectedIds.length === 0) return;
+    const copied: PenmaNode[] = [];
+    for (const id of state.selectedIds) {
+      for (const doc of state.documents) {
+        const node = findNodeById(doc.rootNode, id);
+        if (node) {
+          copied.push(JSON.parse(JSON.stringify(node)));
+          break;
+        }
+      }
+    }
+    set({ clipboard: copied });
+  },
+
+  cutNodes: () => {
+    const state = get();
+    if (state.selectedIds.length === 0) return;
+    // Copy first
+    const copied: PenmaNode[] = [];
+    for (const id of state.selectedIds) {
+      for (const doc of state.documents) {
+        const node = findNodeById(doc.rootNode, id);
+        if (node) {
+          copied.push(JSON.parse(JSON.stringify(node)));
+          break;
+        }
+      }
+    }
+    set({ clipboard: copied });
+    // Then delete
+    state.pushHistory('Cut');
+    state.deleteNodes(state.selectedIds);
+  },
+
+  pasteNodes: () => {
+    const state = get();
+    if (state.clipboard.length === 0) return;
+    state.pushHistory('Paste');
+    const newIds: string[] = [];
+    for (const node of state.clipboard) {
+      const cloned = cloneWithNewIds(node);
+      // Offset position slightly so paste is visible
+      if (cloned.styles.overrides['left']) {
+        const left = parseFloat(cloned.styles.overrides['left']) || 0;
+        cloned.styles.overrides['left'] = `${left + 20}px`;
+      }
+      if (cloned.styles.overrides['top']) {
+        const top = parseFloat(cloned.styles.overrides['top']) || 0;
+        cloned.styles.overrides['top'] = `${top + 20}px`;
+      }
+      state.addNodeToActiveDocument(cloned);
+      newIds.push(cloned.id);
+    }
+    set({ selectedIds: newIds });
+  },
 });
+
+/** Deep clone a node tree, assigning new UUIDs to every node */
+function cloneWithNewIds(node: PenmaNode): PenmaNode {
+  return {
+    ...JSON.parse(JSON.stringify(node)),
+    id: uuid(),
+    children: node.children.map(cloneWithNewIds),
+  };
+}

@@ -81,8 +81,9 @@ const ToolDropdown: React.FC<{
   activeId: Tool;
   onSelect: (id: Tool) => void;
   onClose: () => void;
-  anchorRect: DOMRect;
-}> = ({ items, activeId, onSelect, onClose, anchorRect }) => {
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}> = ({ items, activeId, onSelect, onClose, onMouseEnter, onMouseLeave }) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,45 +94,66 @@ const ToolDropdown: React.FC<{
     return () => document.removeEventListener('mousedown', handle);
   }, [onClose]);
 
-  // Position: centered above the anchor, like Figma
-  const left = anchorRect.left + anchorRect.width / 2;
-
   return (
     <div
       ref={ref}
-      className="fixed rounded-xl py-2"
+      className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 rounded-2xl overflow-hidden"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
-        left,
-        bottom: window.innerHeight - anchorRect.top + 8,
-        transform: 'translateX(-50%)',
-        background: '#2C2C2C',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        background: 'linear-gradient(135deg, #383838 0%, #2A2A2A 100%)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset',
         zIndex: 60,
-        minWidth: 200,
+        minWidth: 220,
+        padding: '6px 0',
+        backdropFilter: 'blur(20px)',
       }}
     >
       {items.map((item) => {
         const isActive = item.id === activeId;
+        const Icon = item.icon;
         return (
           <button
             key={item.id}
-            className="flex w-full items-center gap-3 px-3 py-2 cursor-pointer"
-            style={{ transition: 'background 100ms' }}
+            className="flex w-full items-start cursor-pointer"
+            style={{
+              padding: '8px 14px',
+              gap: 12,
+              transition: 'background 80ms',
+            }}
             onClick={() => { onSelect(item.id); onClose(); }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            {/* Checkmark column */}
-            <div className="w-4 flex-shrink-0 flex items-center justify-center">
-              {isActive && <Check size={14} color="white" />}
+            {/* Checkmark */}
+            <div style={{ width: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {isActive && <Check size={15} color="white" strokeWidth={2.5} />}
             </div>
             {/* Icon */}
-            <item.icon size={16} color="white" strokeWidth={1.5} />
+            <div style={{ width: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon size={18} color={isActive ? 'white' : 'rgba(255,255,255,0.75)'} strokeWidth={1.5} />
+            </div>
             {/* Label */}
-            <span className="text-[13px] flex-1 text-white">{item.label}</span>
+            <span style={{
+              flex: 1,
+              fontSize: 13.5,
+              fontWeight: isActive ? 500 : 400,
+              color: isActive ? 'white' : 'rgba(255,255,255,0.85)',
+              letterSpacing: '-0.01em',
+            }}>
+              {item.label}
+            </span>
             {/* Shortcut */}
             {item.shortcut && (
-              <span className="text-[12px] text-white/40 ml-4">{item.shortcut}</span>
+              <span style={{
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.3)',
+                marginLeft: 16,
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.02em',
+              }}>
+                {item.shortcut}
+              </span>
             )}
           </button>
         );
@@ -146,7 +168,6 @@ export const BottomToolbar: React.FC = () => {
   const activeTool = useEditorStore((s) => s.activeTool);
   const setActiveTool = useEditorStore((s) => s.setActiveTool);
   const [openGroup, setOpenGroup] = useState<number | null>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
   // Track last selected sub-tool per group
   const [selectedPerGroup, setSelectedPerGroup] = useState<Record<number, number>>({});
@@ -167,14 +188,24 @@ export const BottomToolbar: React.FC = () => {
     setOpenGroup(null);
   }, [selectedPerGroup, setActiveTool]);
 
-  const handleChevronClick = useCallback((gi: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const btn = (e.currentTarget.closest('[data-tool-group]') as HTMLElement);
-    if (btn) {
-      setAnchorRect(btn.getBoundingClientRect());
-    }
-    setOpenGroup(openGroup === gi ? null : gi);
-  }, [openGroup]);
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleChevronEnter = useCallback((gi: number) => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+    setOpenGroup(gi);
+  }, []);
+
+  const handleChevronLeave = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => setOpenGroup(null), 200);
+  }, []);
+
+  const handleDropdownEnter = useCallback(() => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+  }, []);
+
+  const handleDropdownLeave = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => setOpenGroup(null), 150);
+  }, []);
 
   return (
     <div
@@ -196,10 +227,10 @@ export const BottomToolbar: React.FC = () => {
           <React.Fragment key={gi}>
             {gi > 0 && <div className="w-px h-6 mx-0.5" style={{ background: 'var(--penma-border)' }} />}
 
-            <div className="relative flex items-center" data-tool-group>
+            <div className="relative flex items-start" data-tool-group>
               {/* Main tool button */}
               <button
-                className="flex items-center justify-center rounded-xl cursor-pointer"
+                className="group/btn relative flex items-center justify-center rounded-xl cursor-pointer"
                 style={{
                   width: isGroupActive ? 40 : 36,
                   height: isGroupActive ? 40 : 36,
@@ -208,41 +239,51 @@ export const BottomToolbar: React.FC = () => {
                   transition: 'all 150ms',
                 }}
                 onClick={() => handleGroupClick(gi)}
-                title={`${activeItem.label}${activeItem.shortcut ? ` (${activeItem.shortcut})` : ''}`}
               >
                 <Icon size={20} strokeWidth={1.5} />
+                {/* Tooltip — only when dropdown is closed */}
+                {openGroup !== gi && (
+                  <div className="pointer-events-none absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap rounded-lg px-2.5 py-1.5"
+                    style={{ background: '#2C2C2C', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 61 }}
+                  >
+                    <span className="text-[11px] text-white font-medium">{activeItem.label}</span>
+                    {activeItem.shortcut && (
+                      <span className="text-[11px] text-white/40 ml-2">{activeItem.shortcut}</span>
+                    )}
+                  </div>
+                )}
               </button>
 
               {/* Dropdown chevron */}
               {hasDropdown && (
                 <button
-                  className="flex items-center justify-center cursor-pointer -ml-1.5"
+                  className="flex items-center justify-center cursor-pointer rounded"
                   style={{
-                    width: 12,
-                    height: 20,
+                    width: 24,
+                    height: 32,
                     color: isGroupActive ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
                     opacity: 0.6,
                     transition: 'opacity 100ms',
                   }}
-                  onClick={(e) => handleChevronClick(gi, e)}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; handleChevronEnter(gi); }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; handleChevronLeave(); }}
                 >
-                  <ChevronDown size={10} />
+                  <ChevronDown size={12} />
                 </button>
               )}
-            </div>
 
-            {/* Dropdown */}
-            {openGroup === gi && anchorRect && (
-              <ToolDropdown
-                items={group.items}
-                activeId={activeTool}
-                onSelect={(id) => setActiveTool(id)}
-                onClose={() => setOpenGroup(null)}
-                anchorRect={anchorRect}
-              />
-            )}
+              {/* Dropdown — absolute, positioned above this group */}
+              {openGroup === gi && (
+                <ToolDropdown
+                  items={group.items}
+                  activeId={activeTool}
+                  onSelect={(id) => { setActiveTool(id); setOpenGroup(null); }}
+                  onClose={() => setOpenGroup(null)}
+                  onMouseEnter={handleDropdownEnter}
+                  onMouseLeave={handleDropdownLeave}
+                />
+              )}
+            </div>
           </React.Fragment>
         );
       })}
