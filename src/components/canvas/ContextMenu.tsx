@@ -16,9 +16,10 @@ import {
   ChevronRight,
   Unlink,
   CopyCheck,
+  LocateFixed,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
-import { findNodeById } from '@/lib/utils/tree-utils';
+import { findNodeById, flattenTree } from '@/lib/utils/tree-utils';
 
 interface ContextMenuState {
   x: number;
@@ -97,6 +98,30 @@ export const CanvasContextMenu: React.FC = () => {
     useEditorStore.getState().detachComponent(menu.nodeId);
     close();
   }, [menu, pushHistory, close]);
+
+  const handleGoToMainComponent = useCallback(() => {
+    if (!menu) { close(); return; }
+    const store = useEditorStore.getState();
+    // Find the instance node to get its componentRef
+    let compRef: string | undefined;
+    for (const doc of store.documents) {
+      const node = findNodeById(doc.rootNode, menu.nodeId);
+      if (node?.componentRef) { compRef = node.componentRef; break; }
+    }
+    if (!compRef) { close(); return; }
+    // Find the master node with matching componentId
+    for (const doc of store.documents) {
+      const allNodes = flattenTree(doc.rootNode);
+      const master = allNodes.find((n) => n.componentId === compRef);
+      if (master) {
+        store.select(master.id);
+        const el = document.querySelector(`[data-penma-id="${master.id}"]`);
+        if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        break;
+      }
+    }
+    close();
+  }, [menu, close]);
 
   const handleGroupSelection = useCallback(() => {
     // Group is conceptual — rename with "Group/" prefix
@@ -196,7 +221,10 @@ export const CanvasContextMenu: React.FC = () => {
         }}
       >
         {isInstance ? (
-          <MenuItem icon={Unlink} label="Detach instance" onClick={handleDetachComponent} />
+          <>
+            <MenuItem icon={LocateFixed} label="Go to main component" onClick={handleGoToMainComponent} />
+            <MenuItem icon={Unlink} label="Detach instance" onClick={handleDetachComponent} />
+          </>
         ) : isMaster ? (
           <>
             <MenuItem icon={CopyCheck} label="Create reference" onClick={handleCreateRef} />

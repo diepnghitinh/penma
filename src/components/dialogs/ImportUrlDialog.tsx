@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Globe, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone, Check } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import type { FetchUrlResponse } from '@/types/api';
+import { autoDetectComponents } from '@/lib/design-system/component-detector';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },
@@ -122,6 +123,12 @@ export const ImportUrlDialog: React.FC = () => {
                 // Reassemble and parse the document
                 const fullJson = docChunks.join('');
                 const doc = JSON.parse(fullJson);
+
+                // Auto-detect design system components (buttons, cards, nav items, etc.)
+                if (doc.rootNode) {
+                  autoDetectComponents(doc.rootNode);
+                }
+
                 setDocument(doc);
 
                 // Center camera on the new frame
