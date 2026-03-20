@@ -7,17 +7,44 @@ const AUTO_SAVE_DELAY = 2000;
 
 export function useAutoSave() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevSnapshotRef = useRef<string>('');
+  const prevRef = useRef<{
+    documents: unknown;
+    pages: unknown;
+    camera: unknown;
+    activePageId: unknown;
+    activeDocumentId: unknown;
+    selectedIds: unknown;
+  } | null>(null);
 
   useEffect(() => {
     const unsub = useEditorStore.subscribe((state) => {
       if (!state.projectId) return;
 
-      // Create a lightweight fingerprint of the data we care about
-      // to avoid triggering on isSaving/isDirty/lastSavedAt changes
-      const snapshot = `${state.activePageId}:${state.documents.length}:${state.pages.length}:${state.camera.x}:${state.camera.y}:${state.camera.zoom}`;
-      if (snapshot === prevSnapshotRef.current) return;
-      prevSnapshotRef.current = snapshot;
+      // Skip changes to save-related fields (isSaving, isDirty, lastSavedAt)
+      // by comparing object references of the actual data fields
+      const current = {
+        documents: state.documents,
+        pages: state.pages,
+        camera: state.camera,
+        activePageId: state.activePageId,
+        activeDocumentId: state.activeDocumentId,
+        selectedIds: state.selectedIds,
+      };
+
+      if (prevRef.current) {
+        const prev = prevRef.current;
+        if (
+          prev.documents === current.documents &&
+          prev.pages === current.pages &&
+          prev.camera === current.camera &&
+          prev.activePageId === current.activePageId &&
+          prev.activeDocumentId === current.activeDocumentId &&
+          prev.selectedIds === current.selectedIds
+        ) {
+          return; // No data change, skip
+        }
+      }
+      prevRef.current = current;
 
       useEditorStore.getState().markDirty();
 

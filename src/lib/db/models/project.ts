@@ -16,29 +16,17 @@ export interface IProject extends Document {
   updatedAt: Date;
 }
 
-const PageSchema = new Schema(
-  {
-    _id: { type: String, required: true },
-    name: { type: String, required: true },
-    documents: { type: Schema.Types.Mixed, default: [] },
-    activeDocumentId: { type: String, default: null },
-    selectedIds: { type: [String], default: [] },
-    camera: {
-      type: new Schema({ x: Number, y: Number, zoom: Number }, { _id: false }),
-      default: { x: 0, y: 0, zoom: 1 },
-    },
-  },
-  { _id: false }
-);
-
 const ProjectSchema = new Schema(
   {
     name: { type: String, required: true },
-    pages: { type: [PageSchema], default: [] },
+    pages: { type: Schema.Types.Mixed, default: [] },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
-export const Project =
-  mongoose.models.Project as mongoose.Model<IProject> ??
-  mongoose.model<IProject>('Project', ProjectSchema);
+// Clear cached model to pick up schema changes across HMR
+if (mongoose.models.Project) {
+  mongoose.deleteModel('Project');
+}
+
+export const Project = mongoose.model<IProject>('Project', ProjectSchema);

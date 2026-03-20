@@ -39,21 +39,27 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await connectDB();
-  const { id } = await params;
-  const body = await request.json();
+  try {
+    await connectDB();
+    const { id } = await params;
+    const body = await request.json();
 
-  const project = await Project.findByIdAndUpdate(
-    id,
-    { pages: body.pages },
-    { new: true }
-  );
+    const project = await Project.findById(id);
 
-  if (!project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    project.pages = body.pages;
+    project.markModified('pages');
+    await project.save();
+
+    return NextResponse.json({ success: true, updatedAt: project.updatedAt });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[PUT /api/projects/[id]]', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true, updatedAt: project.updatedAt });
 }
 
 // PATCH /api/projects/[id] — Rename project

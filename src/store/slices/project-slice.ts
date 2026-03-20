@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+import { v4 as uuid } from 'uuid';
 import type { EditorState } from '../editor-store';
 import type { PenmaPage } from './pages-slice';
 
@@ -32,20 +33,37 @@ export const createProjectSlice: StateCreator<
     if (!res.ok) throw new Error('Failed to load project');
 
     const data = await res.json();
-    const pages: PenmaPage[] = data.pages ?? [];
+    const pages: PenmaPage[] = (data.pages ?? []).map(
+      (p: Record<string, unknown>) => ({
+        id: (p.id || p._id) as string,
+        name: (p.name || 'Page') as string,
+        documents: (p.documents ?? []) as PenmaPage['documents'],
+        activeDocumentId: (p.activeDocumentId ?? null) as string | null,
+        selectedIds: (p.selectedIds ?? []) as string[],
+        camera: (p.camera ?? { x: 0, y: 0, zoom: 1 }) as PenmaPage['camera'],
+      })
+    );
     const firstPage = pages[0];
 
     set({
+      // Project metadata
       projectId: data.id,
       projectName: data.name,
-      pages,
-      activePageId: firstPage?.id ?? '',
-      documents: firstPage?.documents ?? [],
-      activeDocumentId: firstPage?.activeDocumentId ?? null,
-      selectedIds: [],
-      camera: firstPage?.camera ?? { x: 0, y: 0, zoom: 1 },
       isDirty: false,
       lastSavedAt: new Date(data.updatedAt),
+      // All pages with their full state
+      pages,
+      activePageId: firstPage?.id ?? '',
+      // Hydrate active page into live editor state
+      documents: firstPage?.documents ?? [],
+      activeDocumentId: firstPage?.activeDocumentId ?? null,
+      selectedIds: firstPage?.selectedIds ?? [],
+      camera: firstPage?.camera ?? { x: 0, y: 0, zoom: 1 },
+      // Reset session-only state
+      undoStack: [],
+      redoStack: [],
+      // Hide import dialog if project already has documents
+      showImportDialog: (firstPage?.documents ?? []).length === 0,
     });
   },
 
@@ -71,14 +89,20 @@ export const createProjectSlice: StateCreator<
       });
 
       // Convert pages to plain serializable objects for the API
-      const serializedPages = pages.map((p) => ({
-        _id: p.id,
-        name: p.name,
-        documents: p.documents,
-        activeDocumentId: p.activeDocumentId,
-        selectedIds: p.selectedIds,
-        camera: p.camera,
-      }));
+      const serializedPages = pages.map((p) => {
+        const raw = p as unknown as Record<string, unknown>;
+        const pageId = p.id || (raw._id as string) || uuid();
+        return {
+          _id: pageId,
+          name: p.name || 'Page',
+          documents: JSON.parse(JSON.stringify(p.documents ?? [])),
+          activeDocumentId: p.activeDocumentId ?? null,
+          selectedIds: p.selectedIds ?? [],
+          camera: p.camera
+            ? { x: p.camera.x, y: p.camera.y, zoom: p.camera.zoom }
+            : { x: 0, y: 0, zoom: 1 },
+        };
+      });
 
       const res = await fetch(`/api/projects/${state.projectId}`, {
         method: 'PUT',
@@ -86,7 +110,10 @@ export const createProjectSlice: StateCreator<
         body: JSON.stringify({ pages: serializedPages }),
       });
 
-      if (!res.ok) throw new Error('Failed to save');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save');
+      }
 
       const result = await res.json();
       set({ isDirty: false, lastSavedAt: new Date(result.updatedAt) });
