@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, Paintbrush } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paintbrush, Eye, EyeOff, Minus, Plus, SeparatorHorizontal } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
@@ -206,6 +206,9 @@ export const StylePanel: React.FC = () => {
           />
         ))}
 
+        {/* Stroke */}
+        {!isInstance && <StrokePanel node={selectedNode} />}
+
         {/* Export */}
         <div style={{ borderTop: '1px solid var(--penma-border)' }}>
           <div className="px-3 py-2">
@@ -218,6 +221,207 @@ export const StylePanel: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ── Stroke panel (Figma-style) ──────────────────────────────
+
+const STROKE_POSITIONS = ['inside', 'center', 'outside'] as const;
+
+const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+  const [expanded, setExpanded] = useState(true);
+  const [showIndividual, setShowIndividual] = useState(false);
+
+  const styles = { ...node.styles.computed, ...node.styles.overrides };
+
+  // Read current border values
+  const btw = parseFloat(styles['border-top-width'] || '0') || 0;
+  const brw = parseFloat(styles['border-right-width'] || '0') || 0;
+  const bbw = parseFloat(styles['border-bottom-width'] || '0') || 0;
+  const blw = parseFloat(styles['border-left-width'] || '0') || 0;
+  const hasBorder = btw > 0 || brw > 0 || bbw > 0 || blw > 0;
+  const uniformWeight = btw === brw && brw === bbw && bbw === blw;
+  const weight = uniformWeight ? btw : Math.max(btw, brw, bbw, blw);
+
+  // Color — pick first available
+  const rawColor = styles['border-top-color'] || styles['border-right-color'] || styles['border-bottom-color'] || styles['border-left-color'] || '#E2E8F0';
+  const hexColor = parseColorToHex(rawColor);
+
+  // Visibility
+  const borderStyle = styles['border-top-style'] || styles['border-bottom-style'] || 'solid';
+  const isVisible = borderStyle !== 'none' && hasBorder;
+
+  const applyBorder = useCallback((overrides: Record<string, string>) => {
+    pushHistory('Change stroke');
+    updateNodeStyles(node.id, overrides);
+  }, [node.id, updateNodeStyles, pushHistory]);
+
+  const setColor = useCallback((hex: string) => {
+    applyBorder({
+      'border-top-color': hex,
+      'border-right-color': hex,
+      'border-bottom-color': hex,
+      'border-left-color': hex,
+    });
+  }, [applyBorder]);
+
+  const setWeight = useCallback((val: number, side?: 'top' | 'right' | 'bottom' | 'left') => {
+    const px = `${Math.max(0, val)}px`;
+    if (side) {
+      applyBorder({ [`border-${side}-width`]: px, [`border-${side}-style`]: val > 0 ? 'solid' : 'none' });
+    } else {
+      applyBorder({
+        'border-top-width': px, 'border-right-width': px, 'border-bottom-width': px, 'border-left-width': px,
+        'border-top-style': val > 0 ? 'solid' : 'none', 'border-right-style': val > 0 ? 'solid' : 'none',
+        'border-bottom-style': val > 0 ? 'solid' : 'none', 'border-left-style': val > 0 ? 'solid' : 'none',
+      });
+    }
+  }, [applyBorder]);
+
+  const toggleVisibility = useCallback(() => {
+    const newStyle = isVisible ? 'none' : 'solid';
+    applyBorder({
+      'border-top-style': newStyle, 'border-right-style': newStyle,
+      'border-bottom-style': newStyle, 'border-left-style': newStyle,
+    });
+  }, [isVisible, applyBorder]);
+
+  const addBorder = useCallback(() => {
+    applyBorder({
+      'border-top-width': '1px', 'border-right-width': '1px', 'border-bottom-width': '1px', 'border-left-width': '1px',
+      'border-top-style': 'solid', 'border-right-style': 'solid', 'border-bottom-style': 'solid', 'border-left-style': 'solid',
+      'border-top-color': '#E2E8F0', 'border-right-color': '#E2E8F0', 'border-bottom-color': '#E2E8F0', 'border-left-color': '#E2E8F0',
+    });
+  }, [applyBorder]);
+
+  const removeBorder = useCallback(() => {
+    applyBorder({
+      'border-top-width': '0px', 'border-right-width': '0px', 'border-bottom-width': '0px', 'border-left-width': '0px',
+      'border-top-style': 'none', 'border-right-style': 'none', 'border-bottom-style': 'none', 'border-left-style': 'none',
+    });
+  }, [applyBorder]);
+
+  return (
+    <div className="border-b border-neutral-100">
+      {/* Header */}
+      <div className="flex h-8 items-center justify-between px-3">
+        <button
+          className="flex items-center gap-1 text-xs font-medium text-neutral-500 cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Stroke
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowIndividual(!showIndividual)}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
+            style={{ color: showIndividual ? 'var(--penma-primary)' : 'var(--penma-text-muted)' }}
+            title="Individual sides"
+          >
+            <SeparatorHorizontal size={12} />
+          </button>
+          <button
+            onClick={hasBorder ? removeBorder : addBorder}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
+            style={{ color: 'var(--penma-text-muted)' }}
+            title={hasBorder ? 'Remove stroke' : 'Add stroke'}
+          >
+            {hasBorder ? <Minus size={12} /> : <Plus size={12} />}
+          </button>
+        </div>
+      </div>
+
+      {expanded && hasBorder && (
+        <div className="px-3 pb-2.5">
+          {/* Color + Opacity + Visibility */}
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="color"
+              value={hexColor}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-6 w-6 cursor-pointer rounded border border-neutral-200 p-0"
+            />
+            <input
+              type="text"
+              value={hexColor.replace('#', '').toUpperCase()}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+                if (v.length === 6) setColor(`#${v}`);
+              }}
+              className="flex-1 rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 font-mono focus:border-blue-300 focus:outline-none"
+            />
+            <span className="text-[10px] text-neutral-400 w-8 text-right">100 %</span>
+            <button
+              onClick={toggleVisibility}
+              className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
+              style={{ color: 'var(--penma-text-muted)' }}
+              title={isVisible ? 'Hide stroke' : 'Show stroke'}
+            >
+              {isVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+            </button>
+          </div>
+
+          {/* Position + Weight */}
+          {!showIndividual && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="text-[9px] text-neutral-400 mb-1">Position</div>
+                <select
+                  value="inside"
+                  onChange={(e) => {
+                    // CSS box model is always "inside" for borders
+                    // This is informational for Figma export
+                  }}
+                  className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 focus:outline-none cursor-pointer"
+                >
+                  {STROKE_POSITIONS.map((p) => (
+                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <div className="text-[9px] text-neutral-400 mb-1">Weight</div>
+                <input
+                  type="number"
+                  value={weight}
+                  onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
+                  min={0}
+                  max={100}
+                  className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none
+                    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Individual side weights */}
+          {showIndividual && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+                const val = parseFloat(styles[`border-${side}-width`] || '0') || 0;
+                return (
+                  <div key={side} className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-neutral-400 w-6 capitalize">{side.slice(0, 1).toUpperCase()}</span>
+                    <input
+                      type="number"
+                      value={val}
+                      onChange={(e) => setWeight(parseInt(e.target.value) || 0, side)}
+                      min={0}
+                      max={100}
+                      className="flex-1 rounded border border-neutral-200 px-2 py-0.5 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none
+                        [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

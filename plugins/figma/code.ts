@@ -321,11 +321,29 @@ async function createFigmaNode(data: any, _parent: FrameNode | null): Promise<Sc
       type: 'SOLID',
       color: { r: s.color?.r || 0, g: s.color?.g || 0, b: s.color?.b || 0 },
     }));
-    if (data.strokeWeight) frame.strokeWeight = data.strokeWeight;
+    if (data.strokeAlign) frame.strokeAlign = data.strokeAlign as any;
+    if (data.strokeTopWeight !== undefined || data.strokeBottomWeight !== undefined ||
+        data.strokeLeftWeight !== undefined || data.strokeRightWeight !== undefined) {
+      // Individual stroke weights per side
+      frame.strokeTopWeight = data.strokeTopWeight ?? 0;
+      frame.strokeRightWeight = data.strokeRightWeight ?? 0;
+      frame.strokeBottomWeight = data.strokeBottomWeight ?? 0;
+      frame.strokeLeftWeight = data.strokeLeftWeight ?? 0;
+    } else if (data.strokeWeight) {
+      frame.strokeWeight = data.strokeWeight;
+    }
   }
 
   // Corner radius
-  if (data.cornerRadius) frame.cornerRadius = data.cornerRadius;
+  if (data.topLeftRadius !== undefined || data.topRightRadius !== undefined ||
+      data.bottomRightRadius !== undefined || data.bottomLeftRadius !== undefined) {
+    frame.topLeftRadius = data.topLeftRadius ?? 0;
+    frame.topRightRadius = data.topRightRadius ?? 0;
+    frame.bottomRightRadius = data.bottomRightRadius ?? 0;
+    frame.bottomLeftRadius = data.bottomLeftRadius ?? 0;
+  } else if (data.cornerRadius) {
+    frame.cornerRadius = data.cornerRadius;
+  }
 
   // Opacity
   if (data.opacity !== undefined && data.opacity < 1) frame.opacity = data.opacity;

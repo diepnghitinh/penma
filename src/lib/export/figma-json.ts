@@ -30,7 +30,16 @@ interface FigmaNode {
   fills?: FigmaFill[];
   strokes?: FigmaStroke[];
   strokeWeight?: number;
+  strokeTopWeight?: number;
+  strokeRightWeight?: number;
+  strokeBottomWeight?: number;
+  strokeLeftWeight?: number;
+  strokeAlign?: string;
   cornerRadius?: number;
+  topLeftRadius?: number;
+  topRightRadius?: number;
+  bottomRightRadius?: number;
+  bottomLeftRadius?: number;
   opacity?: number;
   effects?: FigmaEffect[];
   children?: FigmaNode[];
@@ -296,12 +305,38 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     }
   }
 
-  // Strokes (border)
-  const borderColor = parseColor(styles['border-top-color'] || styles['border-color']);
-  const borderWidth = parseFloat(styles['border-top-width'] || styles['border-width'] || '0');
-  if (borderColor && borderWidth > 0) {
-    result.strokes = [{ type: 'SOLID', color: borderColor }];
-    result.strokeWeight = borderWidth;
+  // Strokes (border) — support individual sides
+  const bt = parseFloat(styles['border-top-width'] || '0') || 0;
+  const br = parseFloat(styles['border-right-width'] || '0') || 0;
+  const bb = parseFloat(styles['border-bottom-width'] || '0') || 0;
+  const bl = parseFloat(styles['border-left-width'] || '0') || 0;
+  const hasBorder = bt > 0 || br > 0 || bb > 0 || bl > 0;
+
+  if (hasBorder) {
+    // Find the first non-zero border color
+    const borderColor =
+      (bt > 0 && parseColor(styles['border-top-color'])) ||
+      (br > 0 && parseColor(styles['border-right-color'])) ||
+      (bb > 0 && parseColor(styles['border-bottom-color'])) ||
+      (bl > 0 && parseColor(styles['border-left-color'])) ||
+      null;
+
+    if (borderColor) {
+      result.strokes = [{ type: 'SOLID', color: borderColor }];
+      result.strokeAlign = 'INSIDE';
+
+      // Check if all sides are equal
+      if (bt === br && br === bb && bb === bl) {
+        result.strokeWeight = bt;
+      } else {
+        // Individual stroke weights per side
+        result.strokeWeight = Math.max(bt, br, bb, bl);
+        result.strokeTopWeight = bt;
+        result.strokeRightWeight = br;
+        result.strokeBottomWeight = bb;
+        result.strokeLeftWeight = bl;
+      }
+    }
   }
 
   // Margins
@@ -314,9 +349,22 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
   if (mb) result.marginBottom = mb;
   if (ml) result.marginLeft = ml;
 
-  // Corner radius
-  const radius = parseFloat(styles['border-top-left-radius'] || styles['border-radius'] || '0');
-  if (radius > 0) result.cornerRadius = radius;
+  // Corner radius — support individual corners
+  const rtl = parseFloat(styles['border-top-left-radius'] || '0') || 0;
+  const rtr = parseFloat(styles['border-top-right-radius'] || '0') || 0;
+  const rbr = parseFloat(styles['border-bottom-right-radius'] || '0') || 0;
+  const rbl = parseFloat(styles['border-bottom-left-radius'] || '0') || 0;
+  if (rtl > 0 || rtr > 0 || rbr > 0 || rbl > 0) {
+    if (rtl === rtr && rtr === rbr && rbr === rbl) {
+      result.cornerRadius = rtl;
+    } else {
+      result.cornerRadius = Math.max(rtl, rtr, rbr, rbl);
+      result.topLeftRadius = rtl;
+      result.topRightRadius = rtr;
+      result.bottomRightRadius = rbr;
+      result.bottomLeftRadius = rbl;
+    }
+  }
 
   // Opacity
   const opacity = parseFloat(styles['opacity'] || '1');
