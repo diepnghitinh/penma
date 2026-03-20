@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* ── Disable browser back/forward swipe gesture ──────────── */
+html, body {
+  overscroll-behavior-x: none;
+}
+
 /* ── Penma Design Tokens ─────────────────────────────────────
    Source: UI/UX Pro Max — Productivity Tool + Design System
    Style: Minimalism & Swiss Style
@@ -32,6 +37,9 @@
   --z-overlay: 20;
   --z-toolbar: 30;
   --z-dialog: 50;
+  --z-sidebar: 8888;
+  --z-modal-overlay: 9998;
+  --z-modal: 9999;
 
   /* Transitions (UX: 200-250ms for subtle hover) */
   --transition-fast: 150ms ease;

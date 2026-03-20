@@ -37,7 +37,7 @@ interface FigmaNode {
   // Text-specific
   characters?: string;
   style?: FigmaTextStyle;
-  // Auto layout
+  // Auto layout (container)
   layoutMode?: string;
   primaryAxisSizingMode?: string;
   counterAxisSizingMode?: string;
@@ -48,8 +48,22 @@ interface FigmaNode {
   paddingTop?: number;
   paddingBottom?: number;
   itemSpacing?: number;
+  layoutWrap?: string;
+  // Auto layout (child resizing)
+  layoutAlign?: string;       // "STRETCH" | "INHERIT" | "MIN" | "CENTER" | "MAX"
+  layoutGrow?: number;        // 0 = fixed/hug, 1 = fill
+  layoutSizingHorizontal?: string; // "FIXED" | "HUG" | "FILL"
+  layoutSizingVertical?: string;   // "FIXED" | "HUG" | "FILL"
+  clipsContent?: boolean;
+  // Min/max sizing
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
   // SVG/Vector data
   svgData?: string;
+  /** Ready-to-use SVG string for figma.createNodeFromSvg() */
+  svgString?: string;
   // Image
   imageUrl?: string;
   // Export settings
@@ -196,8 +210,9 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
 
   // Fills
   if (isImg) {
-    // Image fill — include the image URL as a reference
-    const imgSrc = node.attributes?.src || node.attributes?.['data-src'] || '';
+    // Image fill — resolve proxy URLs to originals
+    const rawSrc = node.attributes?.src || node.attributes?.['data-src'] || '';
+    const imgSrc = resolveProxyUrl(rawSrc);
     result.fills = [{
       type: 'IMAGE',
       visible: true,
@@ -206,17 +221,33 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       imageUrl: imgSrc,
     }];
     result.imageUrl = imgSrc;
-    // Add export setting for images
     result.exportSettings = [
       { format: 'PNG', suffix: '', constraint: { type: 'SCALE', value: 2 } },
     ];
   } else if (isSvg && node.rawHtml) {
-    // SVG — embed the raw SVG data and use vector fill
-    result.svgData = node.rawHtml;
-    result.fills = [{ type: 'SOLID', visible: true, color: { r: 0, g: 0, b: 0, a: 1 } }];
-    // Add SVG export setting
+    // SVG — prepare for Figma plugin's figma.createNodeFromSvg()
+    const svgFillColor = parseColor(styles['color']) || { r: 0, g: 0, b: 0, a: 1 };
+    const hexColor = `#${Math.round(svgFillColor.r * 255).toString(16).padStart(2, '0')}${Math.round(svgFillColor.g * 255).toString(16).padStart(2, '0')}${Math.round(svgFillColor.b * 255).toString(16).padStart(2, '0')}`;
+
+    // Build a clean standalone SVG string
+    let svgMarkup = node.rawHtml.replace(/currentColor/g, hexColor);
+    if (!svgMarkup.includes('xmlns=')) {
+      svgMarkup = svgMarkup.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    // Ensure width/height attributes for figma.createNodeFromSvg()
+    if (!svgMarkup.match(/\bwidth=/)) {
+      svgMarkup = svgMarkup.replace('<svg', `<svg width="${node.bounds.width}"`);
+    }
+    if (!svgMarkup.match(/\bheight=/)) {
+      svgMarkup = svgMarkup.replace('<svg', `<svg height="${node.bounds.height}"`);
+    }
+
+    result.svgString = svgMarkup;
+    result.svgData = svgMarkup;
+    result.fills = [{ type: 'SOLID', visible: true, color: svgFillColor }];
     result.exportSettings = [
       { format: 'SVG', suffix: '' },
+      { format: 'PNG', suffix: '@2x', constraint: { type: 'SCALE', value: 2 } },
     ];
   } else {
     // Background color fill
@@ -225,6 +256,35 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       result.fills = [{ type: 'SOLID', visible: true, color: bgColor }];
     } else {
       result.fills = [];
+    }
+
+    // CSS background-image: url(...) → IMAGE fill
+    const bgImage = styles['background-image'];
+    if (bgImage && bgImage !== 'none' && bgImage.includes('url(')) {
+      const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+      if (urlMatch) {
+        const bgUrl = resolveProxyUrl(urlMatch[1]);
+        result.fills = [
+          ...(result.fills || []),
+          { type: 'IMAGE', visible: true, scaleMode: 'FILL', imageRef: node.id, imageUrl: bgUrl },
+        ];
+        result.imageUrl = bgUrl;
+        result.exportSettings = [
+          { format: 'PNG', suffix: '', constraint: { type: 'SCALE', value: 2 } },
+        ];
+      }
+    }
+  }
+
+  // Elements with rawHtml that aren't SVG root (e.g. picture, video poster)
+  if (node.rawHtml && !isSvg && node.tagName !== 'img') {
+    // Check if rawHtml contains SVG
+    if (node.rawHtml.includes('<svg')) {
+      result.svgData = node.rawHtml;
+      result.exportSettings = [
+        ...(result.exportSettings || []),
+        { format: 'SVG', suffix: '' },
+      ];
     }
   }
 
@@ -274,9 +334,23 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
   // Auto layout → Figma layout mode
   if (node.autoLayout) {
     const al = node.autoLayout;
-    result.layoutMode = al.direction === 'horizontal' || al.direction === 'wrap' ? 'HORIZONTAL' : 'VERTICAL';
-    result.primaryAxisSizingMode = 'AUTO';
-    result.counterAxisSizingMode = 'AUTO';
+    const isHoriz = al.direction === 'horizontal' || al.direction === 'wrap';
+    result.layoutMode = isHoriz ? 'HORIZONTAL' : 'VERTICAL';
+    if (al.direction === 'wrap') result.layoutWrap = 'WRAP';
+
+    // Container sizing from node.sizing
+    const sizing = node.sizing;
+    if (sizing) {
+      // Primary axis: horizontal for HORIZONTAL layout, vertical for VERTICAL
+      const primarySizing = isHoriz ? sizing.horizontal : sizing.vertical;
+      const counterSizing = isHoriz ? sizing.vertical : sizing.horizontal;
+      result.primaryAxisSizingMode = primarySizing === 'hug' ? 'AUTO' : 'FIXED';
+      result.counterAxisSizingMode = counterSizing === 'hug' ? 'AUTO' : 'FIXED';
+    } else {
+      result.primaryAxisSizingMode = 'AUTO';
+      result.counterAxisSizingMode = 'AUTO';
+    }
+
     result.primaryAxisAlignItems = mapAxisAlign(al.primaryAxisAlign);
     result.counterAxisAlignItems = mapCounterAlign(al.counterAxisAlign);
     result.paddingTop = al.padding.top;
@@ -284,6 +358,65 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     result.paddingBottom = al.padding.bottom;
     result.paddingLeft = al.padding.left;
     result.itemSpacing = al.gap;
+    if (al.clipContent) result.clipsContent = true;
+  }
+
+  // Sizing / resizing from node.sizing (applies to all nodes, not just auto layout containers)
+  if (node.sizing) {
+    result.layoutSizingHorizontal = mapSizingMode(node.sizing.horizontal);
+    result.layoutSizingVertical = mapSizingMode(node.sizing.vertical);
+
+    // layoutGrow: 1 means fill along parent's primary axis
+    if (node.sizing.horizontal === 'fill' || node.sizing.vertical === 'fill') {
+      result.layoutGrow = 1;
+    } else {
+      result.layoutGrow = 0;
+    }
+
+    // layoutAlign: STRETCH if fill on counter axis
+    result.layoutAlign = 'INHERIT';
+  }
+
+  // Width/height from CSS → min/max constraints
+  const cssWidth = styles['width'];
+  const cssHeight = styles['height'];
+  const cssMinW = styles['min-width'];
+  const cssMaxW = styles['max-width'];
+  const cssMinH = styles['min-height'];
+  const cssMaxH = styles['max-height'];
+  if (cssMinW && cssMinW !== '0px' && cssMinW !== 'auto') {
+    const v = parseFloat(cssMinW);
+    if (!isNaN(v) && v > 0) result.minWidth = v;
+  }
+  if (cssMaxW && cssMaxW !== 'none') {
+    const v = parseFloat(cssMaxW);
+    if (!isNaN(v) && v > 0) result.maxWidth = v;
+  }
+  if (cssMinH && cssMinH !== '0px' && cssMinH !== 'auto') {
+    const v = parseFloat(cssMinH);
+    if (!isNaN(v) && v > 0) result.minHeight = v;
+  }
+  if (cssMaxH && cssMaxH !== 'none') {
+    const v = parseFloat(cssMaxH);
+    if (!isNaN(v) && v > 0) result.maxHeight = v;
+  }
+
+  // If no explicit sizing but has fixed width/height, set FIXED
+  if (!node.sizing && !node.autoLayout) {
+    if (cssWidth && cssWidth !== 'auto' && !cssWidth.includes('%')) {
+      result.layoutSizingHorizontal = 'FIXED';
+    }
+    if (cssHeight && cssHeight !== 'auto' && !cssHeight.includes('%')) {
+      result.layoutSizingVertical = 'FIXED';
+    }
+    // Percentage width inside a flex parent → FILL
+    if (cssWidth && cssWidth.includes('%')) {
+      result.layoutSizingHorizontal = 'FILL';
+      result.layoutGrow = 1;
+    }
+    if (cssHeight && cssHeight.includes('%')) {
+      result.layoutSizingVertical = 'FILL';
+    }
   }
 
   // Children
@@ -385,5 +518,26 @@ function mapCounterAlign(align: string): string {
     case 'end': return 'MAX';
     case 'baseline': return 'BASELINE';
     default: return 'MIN';
+  }
+}
+
+/** Resolve proxy URLs back to original URLs */
+function resolveProxyUrl(url: string): string {
+  if (url.includes('/api/proxy-asset')) {
+    try {
+      const u = new URL(url, 'http://localhost');
+      const original = u.searchParams.get('url');
+      if (original) return decodeURIComponent(original);
+    } catch {}
+  }
+  return url;
+}
+
+/** Map Penma sizing mode to Figma layout sizing */
+function mapSizingMode(mode: 'fixed' | 'hug' | 'fill'): string {
+  switch (mode) {
+    case 'fill': return 'FILL';
+    case 'hug': return 'HUG';
+    default: return 'FIXED';
   }
 }

@@ -192,7 +192,7 @@ export const ImportUrlDialog: React.FC = () => {
   const viewport = getViewport();
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm" style={{ zIndex: 'var(--z-modal-overlay)' }}>
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">

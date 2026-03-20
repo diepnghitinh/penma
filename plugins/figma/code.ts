@@ -79,12 +79,48 @@ async function importFigmaJson(data: any): Promise<SceneNode[]> {
 
 // ── Import Penma Node ─────────────────────────────────────
 
-async function importPenmaNode(penmaNode: any, parent: FrameNode | null): Promise<SceneNode> {
+async function importPenmaNode(penmaNode: any, _parent: FrameNode | null): Promise<SceneNode> {
   const isText = !!penmaNode.textContent && (!penmaNode.children || penmaNode.children.length === 0);
+  const isSvg = penmaNode.tagName === 'svg' && !!penmaNode.rawHtml;
   const hasChildren = penmaNode.children && penmaNode.children.length > 0;
 
   if (isText) {
     return await createTextFromPenma(penmaNode);
+  }
+
+  // SVG elements — use figma.createNodeFromSvg()
+  if (isSvg) {
+    try {
+      let svgMarkup = penmaNode.rawHtml;
+      // Resolve currentColor
+      const styles = { ...(penmaNode.styles?.computed || {}), ...(penmaNode.styles?.overrides || {}) };
+      const color = parseRgba(styles['color']);
+      if (color) {
+        const hex = `#${Math.round(color.r * 255).toString(16).padStart(2, '0')}${Math.round(color.g * 255).toString(16).padStart(2, '0')}${Math.round(color.b * 255).toString(16).padStart(2, '0')}`;
+        svgMarkup = svgMarkup.replace(/currentColor/g, hex);
+      }
+      if (!svgMarkup.includes('xmlns=')) {
+        svgMarkup = svgMarkup.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      if (!svgMarkup.match(/\bwidth=/)) {
+        svgMarkup = svgMarkup.replace('<svg', `<svg width="${penmaNode.bounds?.width || 24}"`);
+      }
+      if (!svgMarkup.match(/\bheight=/)) {
+        svgMarkup = svgMarkup.replace('<svg', `<svg height="${penmaNode.bounds?.height || 24}"`);
+      }
+      const svgFrame = figma.createNodeFromSvg(svgMarkup);
+      nodeCount++;
+      reportProgress();
+      svgFrame.name = penmaNode.name || 'svg';
+      if (penmaNode.bounds) {
+        svgFrame.resize(Math.max(1, penmaNode.bounds.width), Math.max(1, penmaNode.bounds.height));
+      }
+      svgFrame.visible = penmaNode.visible !== false;
+      svgFrame.locked = penmaNode.locked === true;
+      return svgFrame;
+    } catch {
+      // Fall through to frame creation if SVG parsing fails
+    }
   }
 
   const frame = figma.createFrame();
@@ -237,11 +273,16 @@ async function createTextFromPenma(penmaNode: any): Promise<TextNode> {
 
 // ── Create from Figma JSON format ─────────────────────────
 
-async function createFigmaNode(data: any, parent: FrameNode | null): Promise<SceneNode> {
+async function createFigmaNode(data: any, _parent: FrameNode | null): Promise<SceneNode> {
   const type = data.type;
 
   if (type === 'TEXT') {
     return await createTextNode(data);
+  }
+
+  // SVG/VECTOR — use figma.createNodeFromSvg() if svgString is available
+  if (type === 'VECTOR' && data.svgString) {
+    return createSvgNode(data);
   }
 
   if (type === 'RECTANGLE' || type === 'VECTOR') {
@@ -377,6 +418,38 @@ async function createTextNode(data: any): Promise<TextNode> {
   text.locked = data.locked === true;
 
   return text;
+}
+
+function createSvgNode(data: any): FrameNode {
+  nodeCount++;
+  reportProgress();
+
+  try {
+    const svgFrame = figma.createNodeFromSvg(data.svgString);
+    svgFrame.name = data.name || 'SVG';
+
+    const bbox = data.absoluteBoundingBox;
+    if (bbox && bbox.width > 0 && bbox.height > 0) {
+      svgFrame.resize(Math.max(1, bbox.width), Math.max(1, bbox.height));
+    }
+
+    svgFrame.visible = data.visible !== false;
+    svgFrame.locked = data.locked === true;
+
+    if (data.opacity !== undefined && data.opacity < 1) {
+      svgFrame.opacity = data.opacity;
+    }
+
+    return svgFrame;
+  } catch {
+    // Fallback: create empty frame if SVG parsing fails
+    const fallback = figma.createFrame();
+    fallback.name = data.name || 'SVG (failed)';
+    const bbox = data.absoluteBoundingBox;
+    if (bbox) fallback.resize(Math.max(1, bbox.width), Math.max(1, bbox.height));
+    fallback.fills = [];
+    return fallback;
+  }
 }
 
 function createRectNode(data: any): RectangleNode {

@@ -275,7 +275,32 @@ export async function POST(request: NextRequest) {
     // Detect auto layout from a node's computed styles
     function detectAutoLayout(styles: Record<string, string>): AutoLayout | undefined {
       const display = styles['display'] || '';
-      if (display !== 'flex' && display !== 'inline-flex') return undefined;
+      const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
+
+      // Explicit flex container
+      const isFlex = display === 'flex' || display === 'inline-flex';
+
+      // Implicit vertical layout: element with flex: 1 (flex-grow > 0) that
+      // is a block-level element with children flowing vertically.
+      // In Figma, this needs to be a frame with vertical auto layout.
+      if (!isFlex && flexGrow > 0 && (display === 'block' || display === '' || !display)) {
+        const pt = parseFloat(styles['padding-top'] || '0') || 0;
+        const pr = parseFloat(styles['padding-right'] || '0') || 0;
+        const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+        const pl = parseFloat(styles['padding-left'] || '0') || 0;
+        const gap = parseFloat(styles['gap'] || '0') || 0;
+
+        return {
+          ...DEFAULT_AUTO_LAYOUT,
+          direction: 'vertical',
+          gap,
+          padding: { top: pt, right: pr, bottom: pb, left: pl },
+          independentPadding: !(pt === pr && pr === pb && pb === pl),
+          clipContent: styles['overflow-y'] === 'auto' || styles['overflow-y'] === 'scroll' || styles['overflow'] === 'auto',
+        };
+      }
+
+      if (!isFlex) return undefined;
 
       const flexDir = styles['flex-direction'] || 'row';
       const gap = parseFloat(styles['gap'] || '0') || 0;
@@ -585,7 +610,20 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
 
         function detectAutoLayout(styles: Record<string, string>): AutoLayout | undefined {
           const display = styles['display'] || '';
-          if (display !== 'flex' && display !== 'inline-flex') return undefined;
+          const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
+          const isFlex = display === 'flex' || display === 'inline-flex';
+
+          // Implicit vertical layout: flex:1 block element (e.g. flex:1 with overflow-y:auto)
+          if (!isFlex && flexGrow > 0 && (display === 'block' || display === '' || !display)) {
+            const pt = parseFloat(styles['padding-top'] || '0') || 0;
+            const pr = parseFloat(styles['padding-right'] || '0') || 0;
+            const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+            const pl = parseFloat(styles['padding-left'] || '0') || 0;
+            const gap = parseFloat(styles['gap'] || '0') || 0;
+            return { ...DEFAULT_AUTO_LAYOUT, direction: 'vertical', gap, padding: { top: pt, right: pr, bottom: pb, left: pl }, independentPadding: !(pt === pr && pr === pb && pb === pl), clipContent: styles['overflow-y'] === 'auto' || styles['overflow-y'] === 'scroll' || styles['overflow'] === 'auto' };
+          }
+
+          if (!isFlex) return undefined;
           const flexDir = styles['flex-direction'] || 'row';
           const gap = parseFloat(styles['gap'] || '0') || 0;
           const pt = parseFloat(styles['padding-top'] || '0') || 0;

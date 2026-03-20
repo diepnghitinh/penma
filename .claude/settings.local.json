@@ -19,7 +19,8 @@
       "Bash(npm init:*)",
       "Bash(npm install:*)",
       "Bash(pnpm:*)",
-      "Bash(git -C /Volumes/DEVELOP/GITHUB/html2design log --oneline)"
+      "Bash(git -C /Volumes/DEVELOP/GITHUB/html2design log --oneline)",
+      "Bash(grep -c '\"\"svgData\"\"' \"/Users/dntmaster/Downloads/mvp-v3-linkadz-ai \\(2\\).json\")"
     ]
   }
 }

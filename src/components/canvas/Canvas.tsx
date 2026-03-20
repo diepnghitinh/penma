@@ -120,7 +120,7 @@ export const Canvas: React.FC = () => {
     <div
       ref={canvasRef}
       className="relative flex-1 overflow-hidden"
-      style={{ cursor, background: 'var(--penma-bg)' }}
+      style={{ cursor, background: 'var(--penma-bg)', touchAction: 'none', overscrollBehavior: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

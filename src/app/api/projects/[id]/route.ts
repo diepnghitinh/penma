@@ -44,15 +44,15 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const project = await Project.findById(id);
+    const project = await Project.findByIdAndUpdate(
+      id,
+      { $set: { pages: body.pages } },
+      { new: true, timestamps: true }
+    );
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-
-    project.pages = body.pages;
-    project.markModified('pages');
-    await project.save();
 
     return NextResponse.json({ success: true, updatedAt: project.updatedAt });
   } catch (err) {

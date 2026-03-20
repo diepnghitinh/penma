@@ -216,7 +216,7 @@ export const CanvasContextMenu: React.FC = () => {
           top: menuY,
           background: 'var(--penma-surface)',
           borderColor: 'var(--penma-border)',
-          zIndex: 9999,
+          zIndex: 'var(--z-modal)',
           minWidth: 200,
         }}
       >
@@ -262,7 +262,7 @@ export const CanvasContextMenu: React.FC = () => {
                 background: 'var(--penma-surface)',
                 borderColor: 'var(--penma-border)',
                 minWidth: 140,
-                zIndex: 10000,
+                zIndex: 'var(--z-modal)',
               }}
             >
               {otherPages.map((page) => (

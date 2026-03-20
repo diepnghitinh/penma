@@ -138,6 +138,33 @@ export const EditorShell: React.FC = () => {
     return unsubscribe;
   }, []);
 
+  // Disable browser back/forward swipe gesture (macOS trackpad)
+  useEffect(() => {
+    // Push a dummy history entry so swipe-back doesn't leave the page
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      // Re-push to prevent navigation
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    // Block horizontal overscroll that triggers back/forward
+    const handleWheel = (e: WheelEvent) => {
+      // Horizontal scroll at the edge of the page triggers navigation
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX < -30) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
   const showLayers = openPanels.includes('layers');
   const showStyles = openPanels.includes('styles');
   const showDesignSystem = openPanels.includes('design-system');
