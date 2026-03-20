@@ -54,6 +54,10 @@ export interface AutoLayout {
   clipContent: boolean;
   /** Reverse the visual order of children */
   reverse: boolean;
+  /** CSS grid: number of columns (e.g. from repeat(4, 1fr) → 4) */
+  gridColumns?: number;
+  /** Raw grid-template-columns value for export */
+  gridTemplateColumns?: string;
 }
 
 export interface LayoutPadding {

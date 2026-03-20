@@ -277,6 +277,41 @@ export async function POST(request: NextRequest) {
       const display = styles['display'] || '';
       const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
 
+      // CSS Grid → wrap auto layout
+      const isGrid = display === 'grid' || display === 'inline-grid';
+      if (isGrid) {
+        const gap = parseFloat(styles['gap'] || styles['grid-gap'] || '0') || 0;
+        const pt = parseFloat(styles['padding-top'] || '0') || 0;
+        const pr = parseFloat(styles['padding-right'] || '0') || 0;
+        const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+        const pl = parseFloat(styles['padding-left'] || '0') || 0;
+        const templateCols = styles['grid-template-columns'] || '';
+        const justify = styles['justify-items'] || styles['justify-content'] || '';
+        const align = styles['align-items'] || '';
+
+        // Count columns from grid-template-columns
+        // e.g. "200px 200px 200px 200px" or "repeat(4, 1fr)" → 4
+        let gridColumns = 0;
+        const repeatMatch = templateCols.match(/repeat\((\d+)/);
+        if (repeatMatch) {
+          gridColumns = parseInt(repeatMatch[1]);
+        } else if (templateCols) {
+          gridColumns = templateCols.trim().split(/\s+/).length;
+        }
+
+        return {
+          ...DEFAULT_AUTO_LAYOUT,
+          direction: 'wrap' as const,
+          gap,
+          padding: { top: pt, right: pr, bottom: pb, left: pl },
+          independentPadding: !(pt === pr && pr === pb && pb === pl),
+          primaryAxisAlign: mapJustify(justify),
+          counterAxisAlign: mapAlign(align),
+          gridColumns: gridColumns > 0 ? gridColumns : undefined,
+          gridTemplateColumns: templateCols || undefined,
+        };
+      }
+
       // Explicit flex container
       const isFlex = display === 'flex' || display === 'inline-flex';
 
@@ -611,9 +646,28 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
         function detectAutoLayout(styles: Record<string, string>): AutoLayout | undefined {
           const display = styles['display'] || '';
           const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
+
+          // CSS Grid → wrap auto layout
+          const isGrid = display === 'grid' || display === 'inline-grid';
+          if (isGrid) {
+            const gap = parseFloat(styles['gap'] || styles['grid-gap'] || '0') || 0;
+            const pt = parseFloat(styles['padding-top'] || '0') || 0;
+            const pr = parseFloat(styles['padding-right'] || '0') || 0;
+            const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+            const pl = parseFloat(styles['padding-left'] || '0') || 0;
+            const templateCols = styles['grid-template-columns'] || '';
+            const justify = styles['justify-items'] || styles['justify-content'] || '';
+            const align = styles['align-items'] || '';
+            let gridColumns = 0;
+            const repeatMatch = templateCols.match(/repeat\((\d+)/);
+            if (repeatMatch) gridColumns = parseInt(repeatMatch[1]);
+            else if (templateCols) gridColumns = templateCols.trim().split(/\s+/).length;
+            return { ...DEFAULT_AUTO_LAYOUT, direction: 'wrap' as const, gap, padding: { top: pt, right: pr, bottom: pb, left: pl }, independentPadding: !(pt === pr && pr === pb && pb === pl), primaryAxisAlign: mapJustify(justify), counterAxisAlign: mapAlign(align), gridColumns: gridColumns > 0 ? gridColumns : undefined, gridTemplateColumns: templateCols || undefined };
+          }
+
           const isFlex = display === 'flex' || display === 'inline-flex';
 
-          // Implicit vertical layout: flex:1 block element (e.g. flex:1 with overflow-y:auto)
+          // Implicit vertical layout: flex:1 block element
           if (!isFlex && flexGrow > 0 && (display === 'block' || display === '' || !display)) {
             const pt = parseFloat(styles['padding-top'] || '0') || 0;
             const pr = parseFloat(styles['padding-right'] || '0') || 0;

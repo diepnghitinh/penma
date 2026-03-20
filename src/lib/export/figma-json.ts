@@ -55,6 +55,9 @@ interface FigmaNode {
   layoutSizingHorizontal?: string; // "FIXED" | "HUG" | "FILL"
   layoutSizingVertical?: string;   // "FIXED" | "HUG" | "FILL"
   clipsContent?: boolean;
+  // Grid layout metadata
+  gridColumns?: number;
+  gridTemplateColumns?: string;
   // Margins (not native Figma — stored for plugin use)
   marginTop?: number;
   marginRight?: number;
@@ -374,6 +377,9 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     result.paddingLeft = al.padding.left;
     result.itemSpacing = al.gap;
     if (al.clipContent) result.clipsContent = true;
+    // Grid metadata
+    if (al.gridColumns) result.gridColumns = al.gridColumns;
+    if (al.gridTemplateColumns) result.gridTemplateColumns = al.gridTemplateColumns;
   }
 
   // Sizing / resizing from node.sizing (applies to all nodes, not just auto layout containers)
