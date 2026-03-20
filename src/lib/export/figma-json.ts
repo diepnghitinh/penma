@@ -48,6 +48,12 @@ interface FigmaNode {
   paddingTop?: number;
   paddingBottom?: number;
   itemSpacing?: number;
+  // SVG/Vector data
+  svgData?: string;
+  // Image
+  imageUrl?: string;
+  // Export settings
+  exportSettings?: { format: string; suffix?: string; constraint?: { type: string; value: number } }[];
   // Metadata
   componentProperties?: Record<string, unknown>;
 }
@@ -55,8 +61,12 @@ interface FigmaNode {
 interface FigmaFill {
   type: string;
   visible: boolean;
-  color: FigmaColor;
+  color?: FigmaColor;
   opacity?: number;
+  // Image fill
+  scaleMode?: string;
+  imageRef?: string;
+  imageUrl?: string;
 }
 
 interface FigmaStroke {
@@ -86,6 +96,13 @@ interface FigmaTextStyle {
 // ── Main export function ────────────────────────────────────
 
 export function documentToFigmaJson(doc: PenmaDocument): object {
+  const rootFigmaNode = convertNode(doc.rootNode, doc.canvasX, doc.canvasY);
+
+  // Collect all image and SVG references from the tree
+  const images: Record<string, string> = {};
+  const svgs: Record<string, string> = {};
+  collectAssets(rootFigmaNode, images, svgs);
+
   return {
     name: getDocName(doc),
     schemaVersion: 0,
@@ -99,10 +116,13 @@ export function documentToFigmaJson(doc: PenmaDocument): object {
           name: 'Page 1',
           type: 'CANVAS',
           backgroundColor: { r: 0.96, g: 0.96, b: 0.96, a: 1 },
-          children: [convertNode(doc.rootNode, doc.canvasX, doc.canvasY)],
+          children: [rootFigmaNode],
         },
       ],
     },
+    // Asset references for images and SVGs
+    images,
+    svgs,
     metadata: {
       source: 'penma',
       sourceUrl: doc.sourceUrl,
@@ -110,6 +130,25 @@ export function documentToFigmaJson(doc: PenmaDocument): object {
       viewport: doc.viewport,
     },
   };
+}
+
+/** Recursively collect image URLs and SVG data from the Figma node tree */
+function collectAssets(
+  node: FigmaNode,
+  images: Record<string, string>,
+  svgs: Record<string, string>
+): void {
+  if (node.imageUrl) {
+    images[node.id] = node.imageUrl;
+  }
+  if (node.svgData) {
+    svgs[node.id] = node.svgData;
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      collectAssets(child, images, svgs);
+    }
+  }
 }
 
 export function nodeToFigmaJson(node: PenmaNode): object {
@@ -155,12 +194,38 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     constraints: { vertical: 'TOP', horizontal: 'LEFT' },
   };
 
-  // Fills (background-color)
-  const bgColor = parseColor(styles['background-color']);
-  if (bgColor) {
-    result.fills = [{ type: 'SOLID', visible: true, color: bgColor }];
+  // Fills
+  if (isImg) {
+    // Image fill — include the image URL as a reference
+    const imgSrc = node.attributes?.src || node.attributes?.['data-src'] || '';
+    result.fills = [{
+      type: 'IMAGE',
+      visible: true,
+      scaleMode: 'FILL',
+      imageRef: node.id,
+      imageUrl: imgSrc,
+    }];
+    result.imageUrl = imgSrc;
+    // Add export setting for images
+    result.exportSettings = [
+      { format: 'PNG', suffix: '', constraint: { type: 'SCALE', value: 2 } },
+    ];
+  } else if (isSvg && node.rawHtml) {
+    // SVG — embed the raw SVG data and use vector fill
+    result.svgData = node.rawHtml;
+    result.fills = [{ type: 'SOLID', visible: true, color: { r: 0, g: 0, b: 0, a: 1 } }];
+    // Add SVG export setting
+    result.exportSettings = [
+      { format: 'SVG', suffix: '' },
+    ];
   } else {
-    result.fills = [];
+    // Background color fill
+    const bgColor = parseColor(styles['background-color']);
+    if (bgColor) {
+      result.fills = [{ type: 'SOLID', visible: true, color: bgColor }];
+    } else {
+      result.fills = [];
+    }
   }
 
   // Strokes (border)

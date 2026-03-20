@@ -28,46 +28,88 @@ const FORMATS: { id: ExportFormat; label: string; icon: React.ElementType; descr
 
 export const ExportPanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);
+  const pages = useEditorStore((s) => s.pages);
+  const activePageId = useEditorStore((s) => s.activePageId);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
 
   const [format, setFormat] = useState<ExportFormat>('figma-json');
+  const [exportScope, setExportScope] = useState<'selection' | 'frame' | 'page' | 'all-pages'>('frame');
+  const [selectedPageId, setSelectedPageId] = useState<string>(activePageId);
   const [copied, setCopied] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Determine what to export: selected node, or active frame
-  const exportTarget = useCallback((): { type: 'frame' | 'component'; doc: PenmaDocument; node?: PenmaNode } | null => {
-    // If an element is selected, export that component
-    if (selectedIds.length > 0) {
+  // Determine what to export based on scope
+  const exportTarget = useCallback((): { type: 'frame' | 'component' | 'page' | 'all-pages'; doc: PenmaDocument; node?: PenmaNode; docs?: PenmaDocument[] } | null => {
+    if (exportScope === 'selection' && selectedIds.length > 0) {
       for (const doc of documents) {
         const node = findNodeById(doc.rootNode, selectedIds[0]);
         if (node) return { type: 'component', doc, node };
       }
     }
-    // Otherwise export the active frame
+    if (exportScope === 'all-pages') {
+      // Collect all documents from all pages
+      const allDocs: PenmaDocument[] = [...documents];
+      for (const page of pages) {
+        if (page.id !== activePageId) {
+          allDocs.push(...(page.documents || []));
+        }
+      }
+      if (allDocs.length > 0) return { type: 'all-pages', doc: allDocs[0], docs: allDocs };
+    }
+    if (exportScope === 'page') {
+      // Export all frames on selected page
+      let pageDocs: PenmaDocument[];
+      if (selectedPageId === activePageId) {
+        pageDocs = documents;
+      } else {
+        const page = pages.find((p) => p.id === selectedPageId);
+        pageDocs = page?.documents ?? [];
+      }
+      if (pageDocs.length > 0) return { type: 'page', doc: pageDocs[0], docs: pageDocs };
+    }
+    // Default: active frame
     const activeDoc = documents.find((d) => d.id === activeDocumentId) ?? documents[0];
     if (activeDoc) return { type: 'frame', doc: activeDoc };
     return null;
-  }, [documents, selectedIds, activeDocumentId]);
+  }, [documents, pages, activePageId, selectedIds, activeDocumentId, exportScope, selectedPageId]);
 
   const target = exportTarget();
 
   const generateExport = useCallback((): string => {
     if (!target) return '';
+    const docs = target.docs ?? [target.doc];
     switch (format) {
       case 'figma-json':
         if (target.node && target.type === 'component') {
           return JSON.stringify(nodeToFigmaJson(target.node), null, 2);
         }
-        return JSON.stringify(documentToFigmaJson(target.doc), null, 2);
+        if (docs.length === 1) {
+          return JSON.stringify(documentToFigmaJson(docs[0]), null, 2);
+        }
+        // Multi-frame: wrap all frames in one Figma document
+        return JSON.stringify({
+          name: 'Penma Export',
+          schemaVersion: 0,
+          document: {
+            id: '0:0', name: 'Document', type: 'DOCUMENT',
+            children: [{
+              id: '0:1', name: 'Page 1', type: 'CANVAS',
+              backgroundColor: { r: 0.96, g: 0.96, b: 0.96, a: 1 },
+              children: docs.map((d) => (documentToFigmaJson(d) as { document: { children: { children: object[] }[] } }).document.children[0].children[0]),
+            }],
+          },
+          metadata: { source: 'penma', frameCount: docs.length },
+        }, null, 2);
       case 'html':
-        const node = target.node || target.doc.rootNode;
-        return nodeToHtml(node);
+        if (target.node && target.type === 'component') return nodeToHtml(target.node);
+        return docs.map((d) => nodeToHtml(d.rootNode)).join('\n\n');
       case 'penma-json':
         if (target.node && target.type === 'component') {
           return JSON.stringify(target.node, null, 2);
         }
-        return JSON.stringify(target.doc, null, 2);
+        if (docs.length === 1) return JSON.stringify(docs[0], null, 2);
+        return JSON.stringify(docs, null, 2);
       default:
         return '';
     }
@@ -113,17 +155,54 @@ export const ExportPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* What's being exported */}
+      {/* Export scope selector */}
+      <div>
+        <p className="text-[10px] font-medium mb-1.5" style={{ color: 'var(--penma-text-muted)' }}>Export scope</p>
+        <div className="flex gap-1 flex-wrap">
+          {selectedIds.length > 0 && (
+            <ScopeButton label="Selection" active={exportScope === 'selection'} onClick={() => setExportScope('selection')} />
+          )}
+          <ScopeButton label="Frame" active={exportScope === 'frame'} onClick={() => setExportScope('frame')} />
+          <ScopeButton label="Page" active={exportScope === 'page'} onClick={() => setExportScope('page')} />
+          {pages.length > 1 && (
+            <ScopeButton label="All Pages" active={exportScope === 'all-pages'} onClick={() => setExportScope('all-pages')} />
+          )}
+        </div>
+
+        {/* Page selector when scope is "page" */}
+        {exportScope === 'page' && pages.length > 1 && (
+          <select
+            value={selectedPageId}
+            onChange={(e) => setSelectedPageId(e.target.value)}
+            className="mt-1.5 w-full rounded-md border px-2 py-1 text-[11px] outline-none cursor-pointer"
+            style={{ borderColor: 'var(--penma-border)', background: 'var(--penma-surface)', color: 'var(--penma-text)' }}
+          >
+            {pages.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Export target info */}
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--penma-hover-bg)' }}>
-        {target.type === 'frame' ? <Frame size={14} style={{ color: 'var(--penma-primary)' }} /> : <Component size={14} style={{ color: 'var(--penma-cta)' }} />}
+        {target.type === 'component' ? <Component size={14} style={{ color: 'var(--penma-cta)' }} /> : <Frame size={14} style={{ color: 'var(--penma-primary)' }} />}
         <div className="flex-1 min-w-0">
           <div className="text-[11px] font-medium truncate" style={{ color: 'var(--penma-text)' }}>
-            {target.type === 'frame'
-              ? (() => { try { return new URL(target.doc.sourceUrl).hostname; } catch { return 'Frame'; } })()
-              : target.node?.name || target.node?.tagName || 'Element'}
+            {target.type === 'component'
+              ? target.node?.name || target.node?.tagName || 'Element'
+              : target.type === 'all-pages'
+                ? `All pages (${target.docs?.length ?? 0} frames)`
+                : target.type === 'page'
+                  ? `${pages.find((p) => p.id === selectedPageId)?.name ?? 'Page'} (${target.docs?.length ?? 0} frames)`
+                  : (() => { try { return new URL(target.doc.sourceUrl).hostname; } catch { return 'Frame'; } })()}
           </div>
           <div className="text-[9px]" style={{ color: 'var(--penma-text-muted)' }}>
-            {target.type === 'frame' ? `${target.doc.viewport.width}×${target.doc.viewport.height}` : `<${target.node?.tagName}>`}
+            {target.type === 'component'
+              ? `<${target.node?.tagName}>`
+              : target.docs
+                ? `${target.docs.length} frame${target.docs.length !== 1 ? 's' : ''}`
+                : `${target.doc.viewport.width}×${target.doc.viewport.height}`}
           </div>
         </div>
       </div>
@@ -200,3 +279,18 @@ export const ExportPanel: React.FC = () => {
     </div>
   );
 };
+
+const ScopeButton: React.FC<{ label: string; active: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
+  <button
+    onClick={onClick}
+    className="rounded-md px-2.5 py-1 text-[10px] font-medium cursor-pointer"
+    style={{
+      background: active ? 'var(--penma-primary-light)' : 'transparent',
+      color: active ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+      border: active ? '1px solid var(--penma-primary)' : '1px solid var(--penma-border)',
+      transition: 'var(--transition-fast)',
+    }}
+  >
+    {label}
+  </button>
+);
