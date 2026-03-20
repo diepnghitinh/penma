@@ -55,6 +55,11 @@ interface FigmaNode {
   layoutSizingHorizontal?: string; // "FIXED" | "HUG" | "FILL"
   layoutSizingVertical?: string;   // "FIXED" | "HUG" | "FILL"
   clipsContent?: boolean;
+  // Margins (not native Figma — stored for plugin use)
+  marginTop?: number;
+  marginRight?: number;
+  marginBottom?: number;
+  marginLeft?: number;
   // Min/max sizing
   minWidth?: number;
   maxWidth?: number;
@@ -295,6 +300,16 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     result.strokes = [{ type: 'SOLID', color: borderColor }];
     result.strokeWeight = borderWidth;
   }
+
+  // Margins
+  const mt = parseFloat(styles['margin-top'] || '0') || 0;
+  const mr = parseFloat(styles['margin-right'] || '0') || 0;
+  const mb = parseFloat(styles['margin-bottom'] || '0') || 0;
+  const ml = parseFloat(styles['margin-left'] || '0') || 0;
+  if (mt) result.marginTop = mt;
+  if (mr) result.marginRight = mr;
+  if (mb) result.marginBottom = mb;
+  if (ml) result.marginLeft = ml;
 
   // Corner radius
   const radius = parseFloat(styles['border-top-left-radius'] || styles['border-radius'] || '0');
