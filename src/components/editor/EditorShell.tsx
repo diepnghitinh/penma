@@ -117,6 +117,22 @@ export const EditorShell: React.FC = () => {
         e.preventDefault();
         useEditorStore.getState().zoomOut();
       },
+      'Shift+1': () => {
+        if (isInputFocused()) return;
+        const state = useEditorStore.getState();
+        if (state.documents.length === 0) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const d of state.documents) {
+          minX = Math.min(minX, d.canvasX);
+          minY = Math.min(minY, d.canvasY);
+          maxX = Math.max(maxX, d.canvasX + d.viewport.width);
+          maxY = Math.max(maxY, d.canvasY + d.viewport.height);
+        }
+        const canvas = document.querySelector('.penma-canvas');
+        const vw = canvas?.clientWidth ?? window.innerWidth;
+        const vh = canvas?.clientHeight ?? window.innerHeight;
+        state.fitToScreen({ width: maxX - minX, height: maxY - minY }, { width: vw, height: vh });
+      },
     });
 
     return unsubscribe;

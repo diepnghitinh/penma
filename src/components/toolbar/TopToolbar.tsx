@@ -25,7 +25,9 @@ export const TopToolbar: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
   const zoomIn = useEditorStore((s) => s.zoomIn);
   const zoomOut = useEditorStore((s) => s.zoomOut);
+  const zoomTo = useEditorStore((s) => s.zoomTo);
   const resetView = useEditorStore((s) => s.resetView);
+  const fitToScreen = useEditorStore((s) => s.fitToScreen);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const canUndo = useEditorStore((s) => s.canUndo);
@@ -66,6 +68,63 @@ export const TopToolbar: React.FC = () => {
       setNameValue(projectName);
     }
     setIsEditingName(false);
+  };
+
+  // Zoom popover state
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
+  const [zoomInputValue, setZoomInputValue] = useState('');
+  const zoomMenuRef = useRef<HTMLDivElement>(null);
+  const zoomInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showZoomMenu) {
+      setZoomInputValue(String(Math.round(camera.zoom * 100)));
+      setTimeout(() => {
+        zoomInputRef.current?.focus();
+        zoomInputRef.current?.select();
+      }, 0);
+    }
+  }, [showZoomMenu, camera.zoom]);
+
+  useEffect(() => {
+    if (!showZoomMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (zoomMenuRef.current && !zoomMenuRef.current.contains(e.target as Node)) {
+        setShowZoomMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showZoomMenu]);
+
+  const commitZoomInput = () => {
+    const val = parseInt(zoomInputValue, 10);
+    if (!isNaN(val) && val > 0) {
+      zoomTo(Math.max(0.1, Math.min(10, val / 100)));
+    }
+    setShowZoomMenu(false);
+  };
+
+  const handleZoomPreset = (level: number) => {
+    zoomTo(level);
+    setShowZoomMenu(false);
+  };
+
+  const handleZoomToFit = () => {
+    const docs = useEditorStore.getState().documents;
+    if (docs.length === 0) { setShowZoomMenu(false); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const d of docs) {
+      minX = Math.min(minX, d.canvasX);
+      minY = Math.min(minY, d.canvasY);
+      maxX = Math.max(maxX, d.canvasX + d.viewport.width);
+      maxY = Math.max(maxY, d.canvasY + d.viewport.height);
+    }
+    const canvas = document.querySelector('.penma-canvas');
+    const vw = canvas?.clientWidth ?? window.innerWidth;
+    const vh = canvas?.clientHeight ?? window.innerHeight;
+    fitToScreen({ width: maxX - minX, height: maxY - minY }, { width: vw, height: vh });
+    setShowZoomMenu(false);
   };
 
   const Separator = () => <div className="mx-1.5 h-5 w-px" style={{ background: 'var(--penma-border)' }} />;
@@ -206,7 +265,7 @@ export const TopToolbar: React.FC = () => {
       </div>
 
       {/* Center: Zoom controls */}
-      <div className="flex items-center gap-0.5">
+      <div className="relative flex items-center gap-0.5">
         <button
           onClick={() => zoomOut()}
           className="flex h-7 w-7 items-center justify-center rounded cursor-pointer"
@@ -216,14 +275,14 @@ export const TopToolbar: React.FC = () => {
           <ZoomOut size={15} />
         </button>
         <button
-          onClick={resetView}
+          onClick={() => setShowZoomMenu((v) => !v)}
           className="min-w-[52px] rounded px-2 py-1 text-xs font-medium cursor-pointer"
           style={{
             color: 'var(--penma-text-secondary)',
             fontFamily: 'var(--font-mono)',
             transition: 'var(--transition-base)',
           }}
-          title="Reset Zoom (Cmd+0)"
+          title="Zoom options"
         >
           {Math.round(camera.zoom * 100)}%
         </button>
@@ -235,6 +294,50 @@ export const TopToolbar: React.FC = () => {
         >
           <ZoomIn size={15} />
         </button>
+
+        {/* Zoom popover menu */}
+        {showZoomMenu && (
+          <div
+            ref={zoomMenuRef}
+            className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rounded-lg shadow-lg border py-1"
+            style={{
+              background: 'var(--penma-surface)',
+              borderColor: 'var(--penma-border)',
+              zIndex: 'var(--z-dialog)',
+              minWidth: 200,
+            }}
+          >
+            {/* Editable zoom input */}
+            <div className="px-2 py-1.5">
+              <input
+                ref={zoomInputRef}
+                value={zoomInputValue}
+                onChange={(e) => setZoomInputValue(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitZoomInput();
+                  if (e.key === 'Escape') setShowZoomMenu(false);
+                }}
+                onBlur={commitZoomInput}
+                className="w-full rounded-md px-3 py-1.5 text-sm font-medium outline-none"
+                style={{
+                  background: 'var(--penma-bg)',
+                  color: 'var(--penma-text)',
+                  border: '1px solid var(--penma-primary)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+                placeholder="%"
+              />
+            </div>
+            <div className="my-1" style={{ borderTop: '1px solid var(--penma-border)' }} />
+            <ZoomMenuItem label="Zoom in" shortcut="⌘+" onClick={() => { zoomIn(); setShowZoomMenu(false); }} />
+            <ZoomMenuItem label="Zoom out" shortcut="⌘−" onClick={() => { zoomOut(); setShowZoomMenu(false); }} />
+            <ZoomMenuItem label="Zoom to fit" shortcut="⇧1" onClick={handleZoomToFit} />
+            <div className="my-1" style={{ borderTop: '1px solid var(--penma-border)' }} />
+            <ZoomMenuItem label="Zoom to 50%" onClick={() => handleZoomPreset(0.5)} />
+            <ZoomMenuItem label="Zoom to 100%" shortcut="⌘0" onClick={() => handleZoomPreset(1)} />
+            <ZoomMenuItem label="Zoom to 200%" onClick={() => handleZoomPreset(2)} />
+          </div>
+        )}
       </div>
 
       {/* Right: Save status + Settings + Import/Export */}
@@ -293,3 +396,29 @@ export const TopToolbar: React.FC = () => {
     </div>
   );
 };
+
+// ── Zoom menu item ──────────────────────────────────────────
+
+const ZoomMenuItem: React.FC<{ label: string; shortcut?: string; onClick: () => void }> = ({
+  label,
+  shortcut,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className="flex w-full items-center justify-between px-3 py-1.5 text-sm cursor-pointer"
+    style={{
+      color: 'var(--penma-text)',
+      transition: 'var(--transition-fast)',
+    }}
+    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-primary-light)')}
+    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+  >
+    <span>{label}</span>
+    {shortcut && (
+      <span className="ml-4 text-xs" style={{ color: 'var(--penma-text-muted)' }}>
+        {shortcut}
+      </span>
+    )}
+  </button>
+);
