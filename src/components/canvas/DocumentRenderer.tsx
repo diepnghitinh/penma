@@ -268,16 +268,16 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {node.textContent && node.children.length === 0
-        ? node.textContent
-        : node.children.map((child) => (
-            <DocumentRendererMemo
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              parentAutoLayout={node.autoLayout}
-            />
-          ))}
+      {node.textContent && node.children.length === 0 && node.textContent}
+      {node.textContent && node.children.length > 0 && node.textContent}
+      {node.children.map((child) => (
+        <DocumentRendererMemo
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          parentAutoLayout={node.autoLayout}
+        />
+      ))}
     </Tag>
   );
 };

@@ -4,4 +4,14 @@
     --> 
     Figma: Auto layout -> Resizing
 
-2. 
+2. Penma: has margin Bottom
+    -->
+    Figma: missing margin bottom. (fix it)
+
+3. Penma: Component/Button & attributes
+    --> 
+    Figma: create a Container use: Auto layout
+
+4. Penma: Component/Button/Elements
+    --> 
+    Figma: create a Container use: Auto layout, keep padding & all attributes

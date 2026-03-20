@@ -34,3 +34,11 @@ the default is auto-layout vertical.
     justify-content: space-between;
 }
 when import, also support border
+
+###
+html
+<button class="_btn_1smf8_113">Create Campaign</button>
+=> penma: Component > Text (2 element)
+ajust Component is auto layout: alignment center, no padding
+
+###

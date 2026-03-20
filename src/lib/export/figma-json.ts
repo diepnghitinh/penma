@@ -203,8 +203,13 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
   const isImg = node.tagName === 'img';
   const hasChildren = node.children.length > 0;
 
+  const isComponent = !!node.componentId;
+  const isInstance = !!node.componentRef;
+
   let type: string;
-  if (isText) type = 'TEXT';
+  if (isComponent) type = 'COMPONENT';
+  else if (isInstance) type = 'INSTANCE';
+  else if (isText) type = 'TEXT';
   else if (isSvg) type = 'VECTOR';
   else if (isImg) type = 'RECTANGLE';
   else if (hasChildren || node.autoLayout) type = 'FRAME';
@@ -377,8 +382,8 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     if (effect) result.effects = [effect];
   }
 
-  // Text properties
-  if (isText && node.textContent) {
+  // Text properties (skip for components — they get an inner TEXT child instead)
+  if (isText && node.textContent && !isComponent && !isInstance) {
     result.characters = node.textContent;
     result.style = {
       fontFamily: (styles['font-family'] || 'Inter').split(',')[0].replace(/['"]/g, ''),
@@ -428,6 +433,35 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     // Grid metadata
     if (al.gridColumns) result.gridColumns = al.gridColumns;
     if (al.gridTemplateColumns) result.gridTemplateColumns = al.gridTemplateColumns;
+  }
+
+  // Components/Instances: ensure auto layout + add metadata
+  if ((isComponent || isInstance) && !result.layoutMode) {
+    // Auto layout: center aligned, no padding (Figma component convention)
+    result.layoutMode = 'HORIZONTAL';
+    result.primaryAxisSizingMode = 'AUTO';
+    result.counterAxisSizingMode = 'AUTO';
+    result.primaryAxisAlignItems = 'CENTER';
+    result.counterAxisAlignItems = 'CENTER';
+    result.itemSpacing = 0;
+    result.paddingTop = 0;
+    result.paddingRight = 0;
+    result.paddingBottom = 0;
+    result.paddingLeft = 0;
+  }
+
+  // Component metadata
+  if (isComponent) {
+    result.componentProperties = {
+      componentId: node.componentId,
+      source: 'penma',
+    };
+  }
+  if (isInstance) {
+    result.componentProperties = {
+      componentRef: node.componentRef,
+      source: 'penma',
+    };
   }
 
   // Sizing / resizing from node.sizing (applies to all nodes, not just auto layout containers)
@@ -493,6 +527,37 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     result.children = node.children
       .filter((c) => c.visible)
       .map((c) => convertNode(c, offsetX, offsetY));
+  }
+
+  // Components/Instances with text content but no children:
+  // Create an inner TEXT child node (Figma components are containers, not text nodes)
+  if ((isComponent || isInstance) && node.textContent && !hasChildren) {
+    const textColor = parseColor(styles['color']);
+    const textChild: FigmaNode = {
+      id: `${node.id}-text`,
+      name: node.textContent.slice(0, 30),
+      type: 'TEXT',
+      visible: true,
+      locked: false,
+      absoluteBoundingBox: { ...result.absoluteBoundingBox },
+      characters: node.textContent,
+      style: {
+        fontFamily: (styles['font-family'] || 'Inter').split(',')[0].replace(/['"]/g, ''),
+        fontSize: parseFloat(styles['font-size'] || '16'),
+        fontWeight: parseInt(styles['font-weight'] || '400') || 400,
+        lineHeightPx: parseLineHeight(styles['line-height'], styles['font-size']),
+        letterSpacing: parseFloat(styles['letter-spacing'] || '0') || 0,
+        textAlignHorizontal: mapTextAlign(styles['text-align']),
+        textDecoration: mapTextDecoration(styles['text-decoration']),
+      },
+      fills: textColor ? [{ type: 'SOLID', visible: true, color: textColor }] : [],
+      layoutSizingHorizontal: 'HUG',
+      layoutSizingVertical: 'HUG',
+    };
+    result.children = [textChild];
+    // Remove characters from the container — it's a frame, not text
+    delete result.characters;
+    delete result.style;
   }
 
   return result;

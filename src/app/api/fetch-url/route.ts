@@ -450,6 +450,53 @@ export async function POST(request: NextRequest) {
     ): PenmaNode {
       if (!node) throw new Error('Node is null');
 
+      // Button/a/select with text only → split into container + text child
+      const INTERACTIVE_TAGS = new Set(['button', 'a', 'select', 'label']);
+      const isTextOnlyInteractive = INTERACTIVE_TAGS.has(node.tagName)
+        && !!node.textContent
+        && (!node.children || node.children.length === 0)
+        && !node.rawHtml;
+
+      if (isTextOnlyInteractive) {
+        // Container: auto layout horizontal, center aligned, no padding
+        const containerAutoLayout: AutoLayout = {
+          ...DEFAULT_AUTO_LAYOUT,
+          direction: 'horizontal',
+          primaryAxisAlign: 'center',
+          counterAxisAlign: 'center',
+        };
+        const containerSizing = parentAutoLayout
+          ? detectChildSizing(node.styles, parentAutoLayout)
+          : { ...DEFAULT_SIZING };
+
+        // Text child: inherits parent font styles
+        const textChild: PenmaNode = {
+          id: uuid(),
+          tagName: 'span',
+          attributes: {},
+          children: [],
+          textContent: node.textContent,
+          styles: { computed: node.styles, overrides: {} },
+          bounds: node.bounds,
+          visible: true,
+          locked: false,
+        };
+
+        return {
+          id: uuid(),
+          tagName: node.tagName,
+          attributes: node.attributes,
+          children: [textChild],
+          styles: { computed: node.styles, overrides: {} },
+          bounds: node.bounds,
+          visible: true,
+          locked: false,
+          name: node.name,
+          autoLayout: containerAutoLayout,
+          sizing: containerSizing,
+        };
+      }
+
       const childCount = node.children?.length ?? 0;
       const autoLayout = detectAutoLayout(node.styles, childCount);
       const sizing = parentAutoLayout
@@ -738,6 +785,16 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
 
         function assignIds(node: any, parentAL?: AutoLayout): PenmaNode {
           if (!node) throw new Error('Node is null');
+
+          // Button/a/select with text only → container + text child
+          const INTERACTIVE_TAGS = new Set(['button', 'a', 'select', 'label']);
+          if (INTERACTIVE_TAGS.has(node.tagName) && !!node.textContent && (!node.children || node.children.length === 0) && !node.rawHtml) {
+            const containerAL: AutoLayout = { ...DEFAULT_AUTO_LAYOUT, direction: 'horizontal', primaryAxisAlign: 'center', counterAxisAlign: 'center' };
+            const containerSizing = parentAL ? detectChildSizing(node.styles, parentAL) : { ...DEFAULT_SIZING };
+            const textChild: PenmaNode = { id: uuid(), tagName: 'span', attributes: {}, children: [], textContent: node.textContent, styles: { computed: node.styles, overrides: {} }, bounds: node.bounds, visible: true, locked: false };
+            return { id: uuid(), tagName: node.tagName, attributes: node.attributes, children: [textChild], styles: { computed: node.styles, overrides: {} }, bounds: node.bounds, visible: true, locked: false, name: node.name, autoLayout: containerAL, sizing: containerSizing };
+          }
+
           const childCount = node.children?.length ?? 0;
           const autoLayout = detectAutoLayout(node.styles, childCount);
           const sizing = parentAL ? detectChildSizing(node.styles, parentAL) : autoLayout ? { ...DEFAULT_SIZING } : undefined;

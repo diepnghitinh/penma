@@ -185,12 +185,42 @@ async function importPenmaNode(penmaNode: any, _parent: FrameNode | null): Promi
     if (al.clipContent) frame.clipsContent = true;
   }
 
-  // Children
+  // Children — handle margins
   if (hasChildren) {
     for (const child of penmaNode.children) {
       if (child.visible === false) continue;
       const childNode = await importPenmaNode(child, frame);
-      frame.appendChild(childNode);
+
+      // Check for margins via computed styles
+      const cs = { ...(child.styles?.computed || {}), ...(child.styles?.overrides || {}) };
+      const mt = parseFloat(cs['margin-top'] || '0') || 0;
+      const mr = parseFloat(cs['margin-right'] || '0') || 0;
+      const mb = parseFloat(cs['margin-bottom'] || '0') || 0;
+      const ml = parseFloat(cs['margin-left'] || '0') || 0;
+      const hasMargin = mt > 0 || mr > 0 || mb > 0 || ml > 0;
+
+      if (hasMargin && penmaNode.autoLayout) {
+        const wrapper = figma.createFrame();
+        wrapper.name = 'margin-wrapper';
+        wrapper.fills = [];
+        wrapper.clipsContent = false;
+        wrapper.layoutMode = 'VERTICAL';
+        wrapper.primaryAxisSizingMode = 'AUTO';
+        wrapper.counterAxisSizingMode = 'AUTO';
+        wrapper.paddingTop = mt;
+        wrapper.paddingRight = mr;
+        wrapper.paddingBottom = mb;
+        wrapper.paddingLeft = ml;
+        wrapper.itemSpacing = 0;
+        wrapper.appendChild(childNode);
+        wrapper.resize(
+          Math.max(1, childNode.width + ml + mr),
+          Math.max(1, childNode.height + mt + mb)
+        );
+        frame.appendChild(wrapper);
+      } else {
+        frame.appendChild(childNode);
+      }
     }
   }
 
@@ -273,7 +303,7 @@ async function createTextFromPenma(penmaNode: any): Promise<TextNode> {
 
 // ── Create from Figma JSON format ─────────────────────────
 
-async function createFigmaNode(data: any, _parent: FrameNode | null): Promise<SceneNode> {
+async function createFigmaNode(data: any, _parent: FrameNode | null, insideComponent = false): Promise<SceneNode> {
   const type = data.type;
 
   if (type === 'TEXT') {
@@ -289,8 +319,15 @@ async function createFigmaNode(data: any, _parent: FrameNode | null): Promise<Sc
     return createRectNode(data);
   }
 
-  // FRAME or default
-  const frame = figma.createFrame();
+  // COMPONENT — only create as Figma component if not already inside a component
+  const isComponentType = type === 'COMPONENT';
+  let frame: FrameNode | ComponentNode;
+  if (isComponentType && !insideComponent) {
+    frame = figma.createComponent();
+  } else {
+    frame = figma.createFrame();
+  }
+  const childInsideComponent = insideComponent || isComponentType;
   nodeCount++;
   reportProgress();
 
@@ -373,11 +410,42 @@ async function createFigmaNode(data: any, _parent: FrameNode | null): Promise<Sc
     if (data.itemSpacing !== undefined) frame.itemSpacing = data.itemSpacing;
   }
 
-  // Children
+  // Children — handle margins by wrapping in spacer frames
   if (data.children) {
     for (const child of data.children) {
-      const childNode = await createFigmaNode(child, frame);
-      frame.appendChild(childNode);
+      const childNode = await createFigmaNode(child, frame as FrameNode, childInsideComponent);
+
+      // If child has margins, wrap it in a frame with padding to simulate margins
+      const mt = child.marginTop || 0;
+      const mr = child.marginRight || 0;
+      const mb = child.marginBottom || 0;
+      const ml = child.marginLeft || 0;
+      const hasMargin = mt > 0 || mr > 0 || mb > 0 || ml > 0;
+
+      if (hasMargin && data.layoutMode) {
+        // In auto layout parents, wrap the child in a transparent frame
+        const wrapper = figma.createFrame();
+        wrapper.name = `margin-wrapper`;
+        wrapper.fills = [];
+        wrapper.clipsContent = false;
+        wrapper.layoutMode = 'VERTICAL';
+        wrapper.primaryAxisSizingMode = 'AUTO';
+        wrapper.counterAxisSizingMode = 'AUTO';
+        wrapper.paddingTop = mt;
+        wrapper.paddingRight = mr;
+        wrapper.paddingBottom = mb;
+        wrapper.paddingLeft = ml;
+        wrapper.itemSpacing = 0;
+        wrapper.appendChild(childNode);
+        // Resize wrapper to fit
+        wrapper.resize(
+          Math.max(1, childNode.width + ml + mr),
+          Math.max(1, childNode.height + mt + mb)
+        );
+        frame.appendChild(wrapper);
+      } else {
+        frame.appendChild(childNode);
+      }
     }
   }
 
