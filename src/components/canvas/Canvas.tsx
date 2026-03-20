@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { getCanvasTransform } from '@/lib/canvas/coordinates';
 import { DocumentRenderer } from './DocumentRenderer';
@@ -20,6 +20,7 @@ export const Canvas: React.FC = () => {
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
   const removeDocument = useEditorStore((s) => s.removeDocument);
+  const updateDocumentViewport = useEditorStore((s) => s.updateDocumentViewport);
   const pushHistory = useEditorStore((s) => s.pushHistory);
   const activeTool = useEditorStore((s) => s.activeTool);
   const isPanning = useEditorStore((s) => s.isPanning);
@@ -162,9 +163,12 @@ export const Canvas: React.FC = () => {
                 <span className="truncate max-w-[200px]">
                   {new URL(doc.sourceUrl).hostname}
                 </span>
-                <span className="text-[9px] font-normal" style={{ color: 'var(--penma-text-muted)' }}>
-                  {doc.viewport.width}×{doc.viewport.height}
-                </span>
+                <ViewportSizeLabel
+                  docId={doc.id}
+                  viewport={doc.viewport}
+                  onResize={updateDocumentViewport}
+                  onStart={() => pushHistory('Resize viewport')}
+                />
                 <button
                   className="opacity-0 group-hover/label:opacity-100 flex h-4 w-4 items-center justify-center rounded cursor-pointer"
                   style={{
@@ -188,20 +192,41 @@ export const Canvas: React.FC = () => {
               </div>
 
               {/* Frame */}
-              <div
-                className="shadow-2xl"
-                style={{
-                  width: doc.viewport.width,
-                  minHeight: doc.viewport.height,
-                  overflow: 'hidden',
-                  background: 'var(--penma-surface)',
-                  outline: isActive ? '2px solid var(--penma-primary)' : '1px solid var(--penma-border)',
-                  outlineOffset: isActive ? -1 : 0,
-                  borderRadius: 2,
-                }}
-              >
-                <DocumentRenderer node={doc.rootNode} />
-              </div>
+              <FrameContainer
+                doc={doc}
+                isActive={isActive}
+                onAutoResize={updateDocumentViewport}
+              />
+
+              {/* Frame resize handles — outside overflow container */}
+              {isActive && (
+                <>
+                  <FrameResizeHandle
+                    docId={doc.id}
+                    direction="e"
+                    viewport={doc.viewport}
+                    zoom={camera.zoom}
+                    onResize={updateDocumentViewport}
+                    onStart={() => pushHistory('Resize frame')}
+                  />
+                  <FrameResizeHandle
+                    docId={doc.id}
+                    direction="s"
+                    viewport={doc.viewport}
+                    zoom={camera.zoom}
+                    onResize={updateDocumentViewport}
+                    onStart={() => pushHistory('Resize frame')}
+                  />
+                  <FrameResizeHandle
+                    docId={doc.id}
+                    direction="se"
+                    viewport={doc.viewport}
+                    zoom={camera.zoom}
+                    onResize={updateDocumentViewport}
+                    onStart={() => pushHistory('Resize frame')}
+                  />
+                </>
+              )}
             </div>
           );
         })}
@@ -233,4 +258,235 @@ export const Canvas: React.FC = () => {
 
     </div>
   );
+};
+
+// ── Viewport size label (click to edit) ─────────────────────
+
+const ViewportSizeLabel: React.FC<{
+  docId: string;
+  viewport: { width: number; height: number };
+  onResize: (docId: string, viewport: { width: number; height: number }) => void;
+  onStart: () => void;
+}> = ({ docId, viewport, onResize, onStart }) => {
+  const [editing, setEditing] = useState(false);
+  const [wVal, setWVal] = useState('');
+  const [hVal, setHVal] = useState('');
+  const wRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setWVal(String(viewport.width));
+    setHVal(String(viewport.height));
+    setEditing(true);
+    setTimeout(() => wRef.current?.focus(), 0);
+  }, [viewport]);
+
+  const commit = useCallback(() => {
+    const w = parseInt(wVal, 10);
+    const h = parseInt(hVal, 10);
+    if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+      if (w !== viewport.width || h !== viewport.height) {
+        onStart();
+        onResize(docId, { width: w, height: h });
+      }
+    }
+    setEditing(false);
+  }, [wVal, hVal, docId, viewport, onResize, onStart]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') setEditing(false);
+    e.stopPropagation();
+  }, [commit]);
+
+  if (editing) {
+    return (
+      <span
+        className="flex items-center gap-0.5"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <input
+          ref={wRef}
+          value={wVal}
+          onChange={(e) => setWVal(e.target.value.replace(/[^0-9]/g, ''))}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          className="w-10 rounded border px-1 py-0 text-[9px] text-center outline-none"
+          style={{ borderColor: 'var(--penma-primary)', background: 'var(--penma-surface)', color: 'var(--penma-text)' }}
+        />
+        <span className="text-[9px]" style={{ color: 'var(--penma-text-muted)' }}>×</span>
+        <input
+          value={hVal}
+          onChange={(e) => setHVal(e.target.value.replace(/[^0-9]/g, ''))}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          className="w-10 rounded border px-1 py-0 text-[9px] text-center outline-none"
+          style={{ borderColor: 'var(--penma-primary)', background: 'var(--penma-surface)', color: 'var(--penma-text)' }}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="text-[9px] font-normal cursor-pointer hover:underline"
+      style={{ color: 'var(--penma-text-muted)' }}
+      onClick={startEdit}
+      onPointerDown={(e) => e.stopPropagation()}
+      title="Click to resize viewport"
+    >
+      {viewport.width}×{viewport.height}
+    </span>
+  );
+};
+
+// ── Frame container with auto-resize ────────────────────────
+
+import type { PenmaDocument } from '@/types/document';
+
+const FrameContainer: React.FC<{
+  doc: PenmaDocument;
+  isActive: boolean;
+  onAutoResize: (docId: string, viewport: { width: number; height: number }) => void;
+}> = ({ doc, isActive, onAutoResize }) => {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const lastAppliedRef = useRef({ w: 0, h: 0 });
+
+  // Keep lastApplied in sync with external viewport changes (manual resize)
+  // so auto-resize doesn't fight them
+  useEffect(() => {
+    lastAppliedRef.current = { w: doc.viewport.width, h: doc.viewport.height };
+  }, [doc.viewport.width, doc.viewport.height]);
+
+  // Continuous auto-resize: measure an unconstrained inner wrapper,
+  // then update the frame viewport if content exceeds it.
+  // No loop because: inner div is unconstrained (no width/height set on it),
+  // so changing the outer frame size doesn't change the inner's natural size.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    let rafId = 0;
+
+    const measure = () => {
+      const contentW = content.scrollWidth;
+      const contentH = content.scrollHeight;
+      const curW = doc.viewport.width;
+      const curH = doc.viewport.height;
+
+      // Only resize if content overflows AND we haven't already applied this size
+      const needW = contentW > curW;
+      const needH = contentH > curH;
+      if (!needW && !needH) return;
+
+      const newW = needW ? contentW : curW;
+      const newH = needH ? contentH : curH;
+
+      // Guard: skip if we already applied this exact size
+      if (newW === lastAppliedRef.current.w && newH === lastAppliedRef.current.h) return;
+
+      lastAppliedRef.current = { w: newW, h: newH };
+      onAutoResize(doc.id, { width: newW, height: newH });
+    };
+
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(measure);
+    });
+
+    observer.observe(content);
+    // Initial check
+    rafId = requestAnimationFrame(measure);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
+  }, [doc.id, onAutoResize]);
+
+  return (
+    <div
+      ref={frameRef}
+      className="shadow-2xl"
+      style={{
+        width: doc.viewport.width,
+        minHeight: doc.viewport.height,
+        overflow: 'hidden',
+        background: 'var(--penma-surface)',
+        outline: isActive ? '2px solid var(--penma-primary)' : '1px solid var(--penma-border)',
+        outlineOffset: isActive ? -1 : 0,
+        borderRadius: 2,
+      }}
+    >
+      {/* Inner wrapper: unconstrained so its natural size reflects content */}
+      <div ref={contentRef} style={{ display: 'inline-block', minWidth: '100%' }}>
+        <DocumentRenderer node={doc.rootNode} />
+      </div>
+    </div>
+  );
+};
+
+// ── Frame resize handle ─────────────────────────────────────
+
+const FrameResizeHandle: React.FC<{
+  docId: string;
+  direction: 'e' | 's' | 'se';
+  viewport: { width: number; height: number };
+  zoom: number;
+  onResize: (docId: string, viewport: { width: number; height: number }) => void;
+  onStart: () => void;
+}> = ({ docId, direction, viewport, zoom, onResize, onStart }) => {
+  const [dragging, setDragging] = useState(false);
+  const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    startRef.current = { x: e.clientX, y: e.clientY, w: viewport.width, h: viewport.height };
+    onStart();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [viewport, onStart]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (e: PointerEvent) => {
+      const dx = (e.clientX - startRef.current.x) / zoom;
+      const dy = (e.clientY - startRef.current.y) / zoom;
+      let w = startRef.current.w;
+      let h = startRef.current.h;
+      if (direction === 'e' || direction === 'se') w = Math.max(200, startRef.current.w + dx);
+      if (direction === 's' || direction === 'se') h = Math.max(200, startRef.current.h + dy);
+      onResize(docId, { width: Math.round(w), height: Math.round(h) });
+    };
+
+    const handleUp = () => setDragging(false);
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [dragging, zoom, docId, direction, onResize]);
+
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    zIndex: 10,
+    ...(direction === 'e' && {
+      left: viewport.width - 2, top: 0, width: 8, height: viewport.height, cursor: 'ew-resize',
+    }),
+    ...(direction === 's' && {
+      left: 0, top: viewport.height - 2, width: viewport.width, height: 8, cursor: 'ns-resize',
+    }),
+    ...(direction === 'se' && {
+      left: viewport.width - 4, top: viewport.height - 4, width: 12, height: 12, cursor: 'nwse-resize',
+      background: 'var(--penma-primary)',
+      borderRadius: 2,
+    }),
+  };
+
+  return <div style={style} onPointerDown={handlePointerDown} />;
 };

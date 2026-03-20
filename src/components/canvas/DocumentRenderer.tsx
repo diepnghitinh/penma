@@ -235,7 +235,12 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
   }
 
   // Remap tags that are invalid as children of <div>
-  const REMAP_TAGS: Record<string, string> = { html: 'div', body: 'div', head: 'div' };
+  const REMAP_TAGS: Record<string, string> = {
+    html: 'div', body: 'div', head: 'div',
+    table: 'div', thead: 'div', tbody: 'div', tfoot: 'div',
+    tr: 'div', td: 'div', th: 'div', caption: 'div',
+    colgroup: 'div', col: 'div',
+  };
   const tagName = REMAP_TAGS[node.tagName] ?? node.tagName;
   const Tag = tagName as keyof React.JSX.IntrinsicElements;
   const isVoid = VOID_ELEMENTS.has(node.tagName);

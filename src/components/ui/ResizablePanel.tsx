@@ -62,7 +62,7 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
   }, [side, minWidth, maxWidth]);
 
   return (
-    <div className={`flex flex-shrink-0 ${className}`} style={{ width }}>
+    <div className={`flex flex-shrink-0 ${className}`} style={{ width, zIndex: 10, position: 'relative' }}>
       {/* Handle on left side for right panels */}
       {side === 'right' && (
         <div className="penma-resize-handle" onMouseDown={handleMouseDown} />

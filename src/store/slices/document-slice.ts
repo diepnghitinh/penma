@@ -34,6 +34,8 @@ export interface DocumentSlice {
   updateAutoLayoutPadding: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', value: number) => void;
   setUniformPadding: (nodeId: string, value: number) => void;
   updateSizing: (nodeId: string, axis: 'horizontal' | 'vertical', mode: 'fixed' | 'hug' | 'fill') => void;
+  /** Resize a frame's viewport */
+  updateDocumentViewport: (docId: string, viewport: { width: number; height: number }) => void;
   /** Mark a node as a master component */
   makeComponent: (nodeId: string) => void;
   /** Create an instance (ref) of a master component next to it */
@@ -383,6 +385,20 @@ export const createDocumentSlice: StateCreator<
     set((state) => ({
       documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { if (!node.sizing) node.sizing = { ...DEFAULT_SIZING }; node.sizing[axis] = mode; });
+      }),
+    })),
+
+  updateDocumentViewport: (docId, viewport) =>
+    set((state) => ({
+      documents: state.documents.map((doc) => {
+        if (doc.id !== docId) return doc;
+        // Only update viewport and root bounds — do NOT update root node CSS
+        // to avoid layout feedback loops with auto-resize
+        const updatedRoot = produce(doc.rootNode, (draft) => {
+          draft.bounds.width = viewport.width;
+          draft.bounds.height = viewport.height;
+        });
+        return { ...doc, viewport, rootNode: updatedRoot };
       }),
     })),
 
