@@ -19,39 +19,52 @@ export const EditorShell: React.FC = () => {
 
   // Global keyboard shortcuts
   useEffect(() => {
+    /** Returns true when focus is inside a text-editable element */
+    const isInputFocused = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement).isContentEditable;
+    };
+
     const unsubscribe = tinykeys(window, {
-      'v': () => useEditorStore.getState().setActiveTool('select'),
-      'h': () => useEditorStore.getState().setActiveTool('hand'),
-      'f': () => useEditorStore.getState().setActiveTool('frame'),
-      's': () => useEditorStore.getState().setActiveTool('section'),
-      'r': () => useEditorStore.getState().setActiveTool('rectangle'),
-      'l': () => useEditorStore.getState().setActiveTool('line'),
-      'o': () => useEditorStore.getState().setActiveTool('ellipse'),
-      'p': () => useEditorStore.getState().setActiveTool('pen'),
-      't': () => useEditorStore.getState().setActiveTool('text'),
+      'v': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('select'); },
+      'h': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('hand'); },
+      'f': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('frame'); },
+      's': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('section'); },
+      'r': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('rectangle'); },
+      'l': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('line'); },
+      'o': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('ellipse'); },
+      'p': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('pen'); },
+      't': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('text'); },
       '$mod+z': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().undo();
       },
       '$mod+Shift+z': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().redo();
       },
       '$mod+c': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().copyNodes();
       },
       '$mod+x': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().cutNodes();
       },
       '$mod+v': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().pasteNodes();
       },
       '$mod+d': (e: KeyboardEvent) => {
+        if (isInputFocused()) return;
         e.preventDefault();
-        // Duplicate = copy + paste
         const state = useEditorStore.getState();
         state.copyNodes();
         state.pasteNodes();
@@ -71,6 +84,7 @@ export const EditorShell: React.FC = () => {
         }
       },
       'Delete': () => {
+        if (isInputFocused()) return;
         const state = useEditorStore.getState();
         if (state.selectedIds.length > 0) {
           state.pushHistory('Delete element');
@@ -81,6 +95,7 @@ export const EditorShell: React.FC = () => {
         }
       },
       'Backspace': () => {
+        if (isInputFocused()) return;
         const state = useEditorStore.getState();
         if (state.selectedIds.length > 0) {
           state.pushHistory('Delete element');

@@ -5,13 +5,15 @@ import { createSelectionSlice, type SelectionSlice } from './slices/selection-sl
 import { createUISlice, type UISlice } from './slices/ui-slice';
 import { createHistorySlice, type HistorySlice } from './slices/history-slice';
 import { createPagesSlice, type PagesSlice } from './slices/pages-slice';
+import { createProjectSlice, type ProjectSlice } from './slices/project-slice';
 
 export type EditorState = ViewportSlice &
   DocumentSlice &
   SelectionSlice &
   UISlice &
   HistorySlice &
-  PagesSlice;
+  PagesSlice &
+  ProjectSlice;
 
 export const useEditorStore = create<EditorState>()((...a) => ({
   ...createViewportSlice(...a),
@@ -20,4 +22,5 @@ export const useEditorStore = create<EditorState>()((...a) => ({
   ...createUISlice(...a),
   ...createHistorySlice(...a),
   ...createPagesSlice(...a),
+  ...createProjectSlice(...a),
 }));

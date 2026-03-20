@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ZoomIn,
   ZoomOut,
@@ -11,6 +11,10 @@ import {
   PanelLeft,
   PanelRight,
   Palette,
+  ArrowLeft,
+  Check,
+  Loader2,
+  Circle,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { EditSettingsPopover } from './EditSettingsPopover';
@@ -32,6 +36,38 @@ export const TopToolbar: React.FC = () => {
   const togglePanel = useEditorStore((s) => s.togglePanel);
   const openPanels = useEditorStore((s) => s.openPanels);
 
+  // Project state
+  const projectId = useEditorStore((s) => s.projectId);
+  const projectName = useEditorStore((s) => s.projectName);
+  const setProjectName = useEditorStore((s) => s.setProjectName);
+  const isSaving = useEditorStore((s) => s.isSaving);
+  const isDirty = useEditorStore((s) => s.isDirty);
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(projectName);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setNameValue(projectName);
+  }, [projectName]);
+
+  useEffect(() => {
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [isEditingName]);
+
+  const commitName = () => {
+    const trimmed = nameValue.trim();
+    if (trimmed && trimmed !== projectName) {
+      setProjectName(trimmed);
+    } else {
+      setNameValue(projectName);
+    }
+    setIsEditingName(false);
+  };
+
   const Separator = () => <div className="mx-1.5 h-5 w-px" style={{ background: 'var(--penma-border)' }} />;
 
   return (
@@ -46,20 +82,64 @@ export const TopToolbar: React.FC = () => {
     >
       {/* Left: Logo + Panels + Tools + History */}
       <div className="flex items-center gap-0.5">
-        {/* Logo */}
+        {/* Back + Logo / Project Name */}
         <div className="mr-2 flex items-center gap-2">
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
+          {projectId && (
+            <a
+              href="/"
+              className="flex h-7 w-7 items-center justify-center rounded-lg cursor-pointer"
+              style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-base)' }}
+              title="Back to projects"
+            >
+              <ArrowLeft size={16} />
+            </a>
+          )}
+          <a
+            href="/"
+            className="flex h-7 w-7 items-center justify-center rounded-lg cursor-pointer"
             style={{ background: 'var(--penma-primary)' }}
+            title="Back to projects"
           >
             <span className="text-white text-xs font-bold" style={{ fontFamily: 'var(--font-heading)' }}>P</span>
-          </div>
-          <span
-            className="text-sm font-semibold hidden sm:inline"
-            style={{ fontFamily: 'var(--font-heading)', color: 'var(--penma-text)' }}
-          >
-            Penma
-          </span>
+          </a>
+          {projectId ? (
+            isEditingName ? (
+              <input
+                ref={nameInputRef}
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                onBlur={commitName}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitName();
+                  if (e.key === 'Escape') { setNameValue(projectName); setIsEditingName(false); }
+                }}
+                className="h-7 rounded px-1.5 text-sm font-semibold outline-none"
+                style={{
+                  fontFamily: 'var(--font-heading)',
+                  color: 'var(--penma-text)',
+                  background: 'var(--penma-bg)',
+                  border: '1px solid var(--penma-primary)',
+                  width: `${Math.max(nameValue.length * 8, 80)}px`,
+                }}
+              />
+            ) : (
+              <span
+                className="text-sm font-semibold hidden sm:inline cursor-pointer"
+                style={{ fontFamily: 'var(--font-heading)', color: 'var(--penma-text)' }}
+                onClick={() => setIsEditingName(true)}
+                title="Click to rename"
+              >
+                {projectName}
+              </span>
+            )
+          ) : (
+            <span
+              className="text-sm font-semibold hidden sm:inline"
+              style={{ fontFamily: 'var(--font-heading)', color: 'var(--penma-text)' }}
+            >
+              Penma
+            </span>
+          )}
         </div>
 
         <Separator />
@@ -157,8 +237,28 @@ export const TopToolbar: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Settings + Import/Export */}
+      {/* Right: Save status + Settings + Import/Export */}
       <div className="flex items-center gap-2">
+        {projectId && (
+          <div className="flex items-center gap-1.5 mr-1 text-xs" style={{ color: 'var(--penma-text-muted)' }}>
+            {isSaving ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : isDirty ? (
+              <>
+                <Circle size={8} fill="currentColor" />
+                <span>Unsaved</span>
+              </>
+            ) : (
+              <>
+                <Check size={12} style={{ color: 'var(--penma-success, #22c55e)' }} />
+                <span>Saved</span>
+              </>
+            )}
+          </div>
+        )}
         <EditSettingsPopover />
         <button
           onClick={() => setShowImportDialog(true)}

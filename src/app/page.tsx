@@ -1,7 +1,7 @@
 'use client';
 
-import { EditorShell } from '@/components/editor/EditorShell';
+import { ProjectList } from '@/components/projects/ProjectList';
 
 export default function Home() {
-  return <EditorShell />;
+  return <ProjectList />;
 }

@@ -56,24 +56,25 @@ export const PageTabs: React.FC = () => {
         minHeight: 32,
       }}
     >
-      {pages.map((page) => {
-        const isActive = page.id === activePageId;
-        const isEditing = editingId === page.id;
+      {pages.map((page, index) => {
+        const pageId = page.id ?? (page as unknown as { _id: string })._id;
+        const isActive = pageId === activePageId;
+        const isEditing = editingId === pageId;
 
         return (
           <div
-            key={page.id}
+            key={pageId ?? `page-${index}`}
             className="group relative flex items-center h-6 rounded px-2 gap-1 cursor-pointer flex-shrink-0"
             style={{
               background: isActive ? 'var(--penma-primary-light)' : 'transparent',
               color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
               transition: 'var(--transition-fast)',
             }}
-            onClick={() => switchPage(page.id)}
-            onDoubleClick={() => startRename(page.id, page.name)}
+            onClick={() => switchPage(pageId)}
+            onDoubleClick={() => startRename(pageId, page.name)}
             onContextMenu={(e) => {
               e.preventDefault();
-              setContextMenuId(page.id);
+              setContextMenuId(pageId);
               setContextPos({ x: e.clientX, y: e.clientY });
             }}
           >
@@ -108,7 +109,7 @@ export const PageTabs: React.FC = () => {
                 style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-fast)' }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  removePage(page.id);
+                  removePage(pageId);
                 }}
                 title="Remove page"
               >
@@ -146,8 +147,8 @@ export const PageTabs: React.FC = () => {
           <ContextMenuItem
             label="Rename"
             onClick={() => {
-              const page = pages.find((p) => p.id === contextMenuId);
-              if (page) startRename(page.id, page.name);
+              const page = pages.find((p) => (p.id ?? (p as unknown as { _id: string })._id) === contextMenuId);
+              if (page) startRename(page.id ?? (page as unknown as { _id: string })._id, page.name);
             }}
           />
           <ContextMenuItem
