@@ -25,6 +25,10 @@ export interface PenmaNode {
   name?: string;
   autoLayout?: AutoLayout;
   sizing?: SizingMode;
+  /** Unique ID identifying this node as a master component */
+  componentId?: string;
+  /** Points to a master component's componentId — this node is an instance (ref) */
+  componentRef?: string;
 }
 
 // ── Auto Layout (Figma-style) ──────────────────────────────

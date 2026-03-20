@@ -406,7 +406,7 @@ const ZoomMenuItem: React.FC<{ label: string; shortcut?: string; onClick: () => 
 }) => (
   <button
     onClick={onClick}
-    className="flex w-full items-center justify-between px-3 py-1.5 text-sm cursor-pointer"
+    className="flex w-full items-center justify-between px-3 py-1.5 text-sm cursor-pointer text-left"
     style={{
       color: 'var(--penma-text)',
       transition: 'var(--transition-fast)',

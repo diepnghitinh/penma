@@ -72,7 +72,10 @@ const LayerItem: React.FC<LayerItemProps> = ({ node, depth, expanded }) => {
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded.ids.has(node.id);
   const label = node.name || node.tagName;
-  const tagIcon = TAG_ICONS[node.tagName] || node.tagName.slice(0, 2).toUpperCase();
+  const isMasterComponent = !!node.componentId;
+  const isInstanceRef = !!node.componentRef;
+  const isComponent = isMasterComponent || isInstanceRef;
+  const tagIcon = isComponent ? (isInstanceRef ? '◇' : '◆') : (TAG_ICONS[node.tagName] || node.tagName.slice(0, 2).toUpperCase());
   const rowRef = useRef<HTMLDivElement>(null);
 
   // Scroll into view when selected (e.g. from canvas click)
@@ -110,7 +113,9 @@ const LayerItem: React.FC<LayerItemProps> = ({ node, depth, expanded }) => {
         ref={rowRef}
         data-layer-id={node.id}
         className={`group flex h-7 cursor-pointer items-center text-xs hover:bg-neutral-100 ${
-          isSelected ? 'bg-blue-50 text-blue-700' : 'text-neutral-600'
+          isComponent
+            ? isSelected ? 'bg-pink-50 text-pink-700' : 'text-pink-600'
+            : isSelected ? 'bg-blue-50 text-blue-700' : 'text-neutral-600'
         } ${!node.visible ? 'opacity-40' : ''}`}
         style={{ paddingLeft: depth * 16 + 4 }}
         onClick={handleClick}
@@ -127,7 +132,9 @@ const LayerItem: React.FC<LayerItemProps> = ({ node, depth, expanded }) => {
 
         {/* Tag icon */}
         <span className={`mr-1.5 flex h-4 min-w-[20px] items-center justify-center rounded text-[9px] font-mono ${
-          isSelected ? 'bg-blue-100 text-blue-600' : 'bg-neutral-200 text-neutral-500'
+          isComponent
+            ? 'bg-pink-100 text-pink-600'
+            : isSelected ? 'bg-blue-100 text-blue-600' : 'bg-neutral-200 text-neutral-500'
         }`}>
           {tagIcon}
         </span>

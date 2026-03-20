@@ -138,21 +138,38 @@ export const StylePanel: React.FC = () => {
   const selectedNode = findNodeById(document.rootNode, selectedIds[0]);
   if (!selectedNode) return null;
 
+  const isComponent = !!(selectedNode.componentId || selectedNode.componentRef);
+  const isInstance = !!selectedNode.componentRef;
+  const accentColor = isComponent ? '#ec4899' : 'var(--penma-text-muted)';
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 items-center px-3" style={{ borderBottom: '1px solid var(--penma-border)' }}>
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)', fontFamily: 'var(--font-heading)' }}>
-          Design
+      <div className="flex h-9 items-center px-3" style={{ borderBottom: `1px solid ${isComponent ? '#fce7f3' : 'var(--penma-border)'}` }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accentColor, fontFamily: 'var(--font-heading)' }}>
+          {isInstance ? 'Instance' : isComponent ? 'Component' : 'Design'}
         </span>
         <span className="ml-auto text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
           &lt;{selectedNode.tagName}&gt;
         </span>
       </div>
 
+      {/* Instance banner */}
+      {isInstance && (
+        <div className="flex items-center gap-2 px-3 py-2 text-[11px]" style={{ background: '#fdf2f8', color: '#be185d', borderBottom: '1px solid #fce7f3' }}>
+          <span>◇</span>
+          <span>Component reference — not editable</span>
+        </div>
+      )}
+
       {/* Node info */}
       <div className="border-b border-neutral-100 px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-neutral-700">
+          {isComponent && (
+            <span className="flex h-4 w-4 items-center justify-center rounded text-[9px]" style={{ background: '#fce7f3', color: '#ec4899' }}>
+              {isInstance ? '◇' : '◆'}
+            </span>
+          )}
+          <span className={`text-xs font-medium ${isComponent ? 'text-pink-700' : 'text-neutral-700'}`}>
             {selectedNode.name || selectedNode.tagName}
           </span>
         </div>

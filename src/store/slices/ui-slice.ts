@@ -124,15 +124,12 @@ export const createUISlice: StateCreator<
     const newIds: string[] = [];
     for (const node of state.clipboard) {
       const cloned = cloneWithNewIds(node);
-      // Offset position slightly so paste is visible
-      if (cloned.styles.overrides['left']) {
-        const left = parseFloat(cloned.styles.overrides['left']) || 0;
-        cloned.styles.overrides['left'] = `${left + 20}px`;
-      }
-      if (cloned.styles.overrides['top']) {
-        const top = parseFloat(cloned.styles.overrides['top']) || 0;
-        cloned.styles.overrides['top'] = `${top + 20}px`;
-      }
+      // Offset position so paste is visible
+      const left = parseFloat(cloned.styles.overrides['left'] || cloned.styles.computed['left'] || '0') || 0;
+      const top = parseFloat(cloned.styles.overrides['top'] || cloned.styles.computed['top'] || '0') || 0;
+      cloned.styles.overrides['position'] = 'relative';
+      cloned.styles.overrides['left'] = `${left + 20}px`;
+      cloned.styles.overrides['top'] = `${top + 20}px`;
       state.addNodeToActiveDocument(cloned);
       newIds.push(cloned.id);
     }
@@ -140,11 +137,15 @@ export const createUISlice: StateCreator<
   },
 });
 
-/** Deep clone a node tree, assigning new UUIDs to every node */
+/** Deep clone a node tree with all children, assigning new UUIDs to every node */
 function cloneWithNewIds(node: PenmaNode): PenmaNode {
-  return {
-    ...JSON.parse(JSON.stringify(node)),
-    id: uuid(),
-    children: node.children.map(cloneWithNewIds),
+  const deep: PenmaNode = JSON.parse(JSON.stringify(node));
+  const assignIds = (n: PenmaNode) => {
+    n.id = uuid();
+    // Clear component refs on paste — pasted nodes are independent copies
+    n.componentRef = undefined;
+    for (const child of n.children) assignIds(child);
   };
+  assignIds(deep);
+  return deep;
 }

@@ -1,8 +1,9 @@
 import type { StateCreator } from 'zustand';
 import { produce } from 'immer';
+import { v4 as uuid } from 'uuid';
 import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
-import { updateNodeById, findNodeById, findParentNode } from '@/lib/utils/tree-utils';
+import { updateNodeById, findNodeById, findParentNode, flattenTree } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
 
 export interface DocumentSlice {
@@ -33,23 +34,115 @@ export interface DocumentSlice {
   updateAutoLayoutPadding: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', value: number) => void;
   setUniformPadding: (nodeId: string, value: number) => void;
   updateSizing: (nodeId: string, axis: 'horizontal' | 'vertical', mode: 'fixed' | 'hug' | 'fill') => void;
+  /** Mark a node as a master component */
+  makeComponent: (nodeId: string) => void;
+  /** Create an instance (ref) of a master component next to it */
+  createComponentRef: (nodeId: string) => void;
+  /** Detach an instance, making it a regular editable node */
+  detachComponent: (nodeId: string) => void;
+  /** Check if a node is a component instance (ref) */
+  isComponentRef: (nodeId: string) => boolean;
 }
 
 /**
  * Helper: apply a mutation to whichever document contains the given nodeId.
  * Returns the updated documents array.
+ * If the mutated node is a master component, syncs all instances.
  */
 function mutateNodeInDocs(
   docs: PenmaDocument[],
   nodeId: string,
   mutator: (draft: PenmaDocument) => void
 ): PenmaDocument[] {
-  return docs.map((doc) => {
+  let mutatedNode: PenmaNode | null = null;
+  const result = docs.map((doc) => {
     if (findNodeById(doc.rootNode, nodeId)) {
-      return produce(doc, mutator);
+      const updated = produce(doc, mutator);
+      mutatedNode = findNodeById(updated.rootNode, nodeId);
+      return updated;
     }
     return doc;
   });
+  // If we mutated a master component, sync all its instances
+  if (mutatedNode && (mutatedNode as PenmaNode).componentId) {
+    return syncComponentInstances(result);
+  }
+  return result;
+}
+
+/**
+ * After mutating a master component node, sync all instances (nodes with
+ * matching componentRef) to mirror the master's content.
+ * Preserves each instance's own id, position (bounds), and componentRef.
+ */
+function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
+  // Collect all master components (nodes with componentId)
+  const masters = new Map<string, PenmaNode>();
+  for (const doc of docs) {
+    for (const node of flattenTree(doc.rootNode)) {
+      if (node.componentId) masters.set(node.componentId, node);
+    }
+  }
+  if (masters.size === 0) return docs;
+
+  // Find and update all instances
+  let changed = false;
+  const result = docs.map((doc) => {
+    const instances: { nodeId: string; compId: string }[] = [];
+    for (const node of flattenTree(doc.rootNode)) {
+      if (node.componentRef && masters.has(node.componentRef)) {
+        instances.push({ nodeId: node.id, compId: node.componentRef });
+      }
+    }
+    if (instances.length === 0) return doc;
+
+    changed = true;
+    return produce(doc, (draft) => {
+      for (const { nodeId, compId } of instances) {
+        updateNodeById(draft.rootNode, nodeId, (instance) => {
+          const master = masters.get(compId);
+          if (!master) return;
+          // Sync content from master, preserving instance's own position
+          const savedBounds = { ...instance.bounds };
+          const positionOverrides: Record<string, string> = {};
+          const POSITION_KEYS = ['position', 'top', 'left', 'right', 'bottom', 'z-index', 'transform'];
+          for (const key of POSITION_KEYS) {
+            if (key in instance.styles.overrides) {
+              positionOverrides[key] = instance.styles.overrides[key];
+            }
+          }
+
+          instance.tagName = master.tagName;
+          instance.attributes = { ...master.attributes };
+          instance.textContent = master.textContent;
+          instance.rawHtml = master.rawHtml;
+          instance.styles = {
+            computed: { ...master.styles.computed },
+            overrides: { ...master.styles.overrides, ...positionOverrides },
+          };
+          instance.bounds = savedBounds;
+          instance.visible = master.visible;
+          instance.autoLayout = master.autoLayout
+            ? { ...master.autoLayout, padding: { ...master.autoLayout.padding } }
+            : undefined;
+          instance.sizing = master.sizing ? { ...master.sizing } : undefined;
+          instance.name = master.name;
+          // Deep-clone children from master with fresh IDs
+          instance.children = master.children.map((c) => cloneNodeWithNewIds(c));
+        });
+      }
+    });
+  });
+  return changed ? result : docs;
+}
+
+/** Check if a node is a component instance (ref) — instances are not directly editable */
+function isInstanceNode(docs: PenmaDocument[], nodeId: string): boolean {
+  for (const doc of docs) {
+    const node = findNodeById(doc.rootNode, nodeId);
+    if (node) return !!node.componentRef;
+  }
+  return false;
 }
 
 const FRAME_GAP = 80; // px between frames on canvas
@@ -131,20 +224,26 @@ export const createDocumentSlice: StateCreator<
   setImportError: (error) => set({ importError: error, isImporting: false }),
 
   updateNodeStyles: (nodeId, overrides) =>
-    set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => {
-          Object.assign(node.styles.overrides, overrides);
-        });
-      }),
-    })),
+    set((state) => {
+      if (isInstanceNode(state.documents, nodeId)) return state; // Instances are not editable
+      return {
+        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+          updateNodeById(draft.rootNode, nodeId, (node) => {
+            Object.assign(node.styles.overrides, overrides);
+          });
+        }),
+      };
+    }),
 
   updateNodeText: (nodeId, text) =>
-    set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
-      }),
-    })),
+    set((state) => {
+      if (isInstanceNode(state.documents, nodeId)) return state;
+      return {
+        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+          updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
+        }),
+      };
+    }),
 
   toggleNodeVisibility: (nodeId) =>
     set((state) => ({
@@ -286,4 +385,107 @@ export const createDocumentSlice: StateCreator<
         updateNodeById(draft.rootNode, nodeId, (node) => { if (!node.sizing) node.sizing = { ...DEFAULT_SIZING }; node.sizing[axis] = mode; });
       }),
     })),
+
+  // ── Component system ──────────────────────────────────────
+
+  makeComponent: (nodeId) =>
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          if (!node.componentId) {
+            node.componentId = uuid();
+          }
+          node.componentRef = undefined;
+          if (!node.name?.startsWith('Component/')) {
+            node.name = `Component/${node.name || node.tagName}`;
+          }
+        });
+      }),
+    })),
+
+  createComponentRef: (nodeId) => {
+    const state = get();
+    // Find the master node
+    let masterNode: PenmaNode | null = null;
+    let masterDocId: string | null = null;
+    for (const doc of state.documents) {
+      const found = findNodeById(doc.rootNode, nodeId);
+      if (found) {
+        masterNode = found;
+        masterDocId = doc.id;
+        break;
+      }
+    }
+    if (!masterNode || !masterDocId) return;
+
+    // Ensure node is a component
+    const compId = masterNode.componentId;
+    if (!compId) return;
+
+    // Deep-clone the master node with new IDs, set componentRef
+    const cloned = cloneNodeWithNewIds(masterNode);
+    cloned.componentRef = compId;
+    cloned.componentId = undefined;
+    // Mark name as instance
+    if (cloned.name?.startsWith('Component/')) {
+      cloned.name = cloned.name; // keep the Component/ prefix for pink display
+    }
+
+    // Insert the clone as sibling after the master
+    set((s) => ({
+      documents: s.documents.map((doc) => {
+        if (doc.id !== masterDocId) return doc;
+        return produce(doc, (draft) => {
+          const parent = findParentNode(draft.rootNode, nodeId);
+          if (parent) {
+            const idx = parent.children.findIndex((c) => c.id === nodeId);
+            parent.children.splice(idx + 1, 0, cloned);
+          } else if (draft.rootNode.id === nodeId) {
+            // The master IS the root — add clone to root's children
+            draft.rootNode.children.push(cloned);
+          }
+        });
+      }),
+      selectedIds: [cloned.id],
+    }));
+  },
+
+  detachComponent: (nodeId) =>
+    set((state) => ({
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          node.componentRef = undefined;
+          node.componentId = undefined;
+          // Remove Component/ prefix
+          if (node.name?.startsWith('Component/')) {
+            node.name = node.name.slice('Component/'.length);
+          }
+        });
+      }),
+    })),
+
+  isComponentRef: (nodeId) => {
+    const state = get();
+    for (const doc of state.documents) {
+      const node = findNodeById(doc.rootNode, nodeId);
+      if (node) return !!node.componentRef;
+    }
+    return false;
+  },
 });
+
+/** Deep-clone a node tree, assigning fresh IDs to every node */
+function cloneNodeWithNewIds(node: PenmaNode): PenmaNode {
+  return {
+    ...node,
+    id: uuid(),
+    children: node.children.map((c) => cloneNodeWithNewIds(c)),
+    styles: {
+      computed: { ...node.styles.computed },
+      overrides: { ...node.styles.overrides },
+    },
+    bounds: { ...node.bounds },
+    autoLayout: node.autoLayout ? { ...node.autoLayout, padding: { ...node.autoLayout.padding } } : undefined,
+    sizing: node.sizing ? { ...node.sizing } : undefined,
+  };
+}

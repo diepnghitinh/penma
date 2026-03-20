@@ -14,6 +14,8 @@ import {
   CopyPlus,
   Trash2,
   ChevronRight,
+  Unlink,
+  CopyCheck,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
@@ -75,16 +77,26 @@ export const CanvasContextMenu: React.FC = () => {
 
   const handleCreateComponent = useCallback(() => {
     pushHistory('Create component');
-    // Mark the selected node(s) as a component by renaming with "Component/" prefix
     const store = useEditorStore.getState();
     for (const id of store.selectedIds) {
-      const currentName = findNodeName(id);
-      if (currentName && !currentName.startsWith('Component/')) {
-        store.renameNode(id, `Component/${currentName}`);
-      }
+      store.makeComponent(id);
     }
     close();
   }, [pushHistory, close]);
+
+  const handleCreateRef = useCallback(() => {
+    if (!menu) return;
+    pushHistory('Create component reference');
+    useEditorStore.getState().createComponentRef(menu.nodeId);
+    close();
+  }, [menu, pushHistory, close]);
+
+  const handleDetachComponent = useCallback(() => {
+    if (!menu) return;
+    pushHistory('Detach component');
+    useEditorStore.getState().detachComponent(menu.nodeId);
+    close();
+  }, [menu, pushHistory, close]);
 
   const handleGroupSelection = useCallback(() => {
     // Group is conceptual — rename with "Group/" prefix
@@ -153,6 +165,17 @@ export const CanvasContextMenu: React.FC = () => {
 
   if (!menu) return null;
 
+  // Determine component state of the target node
+  const targetNode = (() => {
+    for (const doc of documents) {
+      const n = findNodeById(doc.rootNode, menu.nodeId);
+      if (n) return n;
+    }
+    return null;
+  })();
+  const isMaster = !!targetNode?.componentId;
+  const isInstance = !!targetNode?.componentRef;
+
   // Keep menu within viewport
   const menuX = Math.min(menu.x, window.innerWidth - 200);
   const menuY = Math.min(menu.y, window.innerHeight - 320);
@@ -172,7 +195,16 @@ export const CanvasContextMenu: React.FC = () => {
           minWidth: 200,
         }}
       >
-        <MenuItem icon={Component} label="Create component" shortcut="Ctrl+Alt+K" onClick={handleCreateComponent} />
+        {isInstance ? (
+          <MenuItem icon={Unlink} label="Detach instance" onClick={handleDetachComponent} />
+        ) : isMaster ? (
+          <>
+            <MenuItem icon={CopyCheck} label="Create reference" onClick={handleCreateRef} />
+            <MenuItem icon={Unlink} label="Remove component" onClick={handleDetachComponent} />
+          </>
+        ) : (
+          <MenuItem icon={Component} label="Create component" shortcut="Ctrl+Alt+K" onClick={handleCreateComponent} />
+        )}
         <MenuItem icon={Group} label="Group selection" shortcut="Ctrl+G" onClick={handleGroupSelection} />
 
         <MenuDivider />
@@ -208,7 +240,7 @@ export const CanvasContextMenu: React.FC = () => {
               {otherPages.map((page) => (
                 <button
                   key={page.id}
-                  className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
+                  className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer text-left"
                   style={{ color: 'var(--penma-text)', transition: 'var(--transition-fast)' }}
                   onClick={() => handleMoveToPage(page.id)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
@@ -220,7 +252,7 @@ export const CanvasContextMenu: React.FC = () => {
               {/* New page option */}
               {otherPages.length > 0 && <MenuDivider />}
               <button
-                className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
+                className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer text-left"
                 style={{ color: 'var(--penma-primary)', transition: 'var(--transition-fast)' }}
                 onClick={() => {
                   pushHistory('Move to new page');
@@ -267,7 +299,7 @@ const MenuItem: React.FC<{
   onClick: () => void;
 }> = ({ icon: Icon, label, shortcut, danger, onClick }) => (
   <button
-    className="flex w-full items-center gap-2 px-3 py-1.5 cursor-pointer"
+    className="flex w-full items-center gap-2 px-3 py-1.5 cursor-pointer text-left"
     style={{ transition: 'var(--transition-fast)' }}
     onClick={onClick}
     onMouseEnter={(e) => (e.currentTarget.style.background = danger ? '#FEF2F2' : 'var(--penma-hover-bg)')}

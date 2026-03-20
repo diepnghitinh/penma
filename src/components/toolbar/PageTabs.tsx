@@ -183,7 +183,7 @@ const ContextMenuItem: React.FC<{
   danger?: boolean;
 }> = ({ label, onClick, danger }) => (
   <button
-    className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer"
+    className="flex w-full items-center px-3 py-1.5 text-[11px] cursor-pointer text-left"
     style={{
       color: danger ? 'var(--penma-danger)' : 'var(--penma-text)',
       transition: 'var(--transition-fast)',

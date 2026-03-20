@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor-store';
+import { findNodeById } from '@/lib/utils/tree-utils';
 import type { Rect } from '@/types/editor';
 
 interface SelectionBox {
@@ -20,8 +21,32 @@ export const SelectionOverlay: React.FC = () => {
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
+  const documents = useEditorStore((s) => s.documents);
+
   const [selectionBoxes, setSelectionBoxes] = useState<SelectionBox[]>([]);
   const [hoverBox, setHoverBox] = useState<Rect | null>(null);
+
+  // Check if hovered node is a component (master or instance)
+  const isHoveredComponent = (() => {
+    if (!hoveredId || selectedIds.includes(hoveredId)) return false;
+    for (const doc of documents) {
+      const node = findNodeById(doc.rootNode, hoveredId);
+      if (node) return !!(node.componentId || node.componentRef);
+    }
+    return false;
+  })();
+
+  // Check if any selected node is a component instance (ref) — block editing
+  const isSelectedInstance = (() => {
+    if (selectedIds.length === 0) return false;
+    for (const id of selectedIds) {
+      for (const doc of documents) {
+        const node = findNodeById(doc.rootNode, id);
+        if (node?.componentRef) return true;
+      }
+    }
+    return false;
+  })();
   const rafRef = useRef<number>(0);
 
   // ── Drag-to-move state ──
@@ -235,8 +260,8 @@ export const SelectionOverlay: React.FC = () => {
           className="absolute"
           style={{
             left: hoverBox.x, top: hoverBox.y, width: hoverBox.width, height: hoverBox.height,
-            border: '1px solid var(--penma-secondary)',
-            opacity: 0.6,
+            border: isHoveredComponent ? '2px solid #ec4899' : '1px solid var(--penma-secondary)',
+            opacity: isHoveredComponent ? 1 : 0.6,
           }}
         />
       )}
@@ -255,11 +280,11 @@ export const SelectionOverlay: React.FC = () => {
             }));
           }}
         >
-          {/* Selection border */}
-          <div className="absolute inset-0 pointer-events-none" style={{ border: '2px solid var(--penma-primary)' }} />
+          {/* Selection border — pink for instances */}
+          <div className="absolute inset-0 pointer-events-none" style={{ border: `2px solid ${isSelectedInstance ? '#ec4899' : 'var(--penma-primary)'}` }} />
 
-          {/* Move area (pointer-events-auto) */}
-          {editEnabled && editSettings.movable && (
+          {/* Move area (pointer-events-auto) — disabled for instances */}
+          {editEnabled && editSettings.movable && !isSelectedInstance && (
             <div
               className="absolute inset-0 pointer-events-auto"
               style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
@@ -280,8 +305,8 @@ export const SelectionOverlay: React.FC = () => {
             />
           )}
 
-          {/* Resize handles */}
-          {editEnabled && editSettings.resizable && selectionBoxes.length === 1 && (
+          {/* Resize handles — disabled for instances */}
+          {editEnabled && editSettings.resizable && selectionBoxes.length === 1 && !isSelectedInstance && (
             <>
               {HANDLE_DIRS.map(({ dir, cls }) => (
                 <div
