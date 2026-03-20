@@ -8,3 +8,15 @@ if div is only flex: 1 ==> auto layout veritcal
 
 export figma json:
 marginBottom is missing.
+
+if div
+._grid_1smf8_35 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+}
+use auto layout is grid and format grid-template-columns
+
+If a div has no flex or grid,
+and contains multiple elements,
+the default is auto-layout vertical.

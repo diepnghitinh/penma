@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Detect auto layout from a node's computed styles
-    function detectAutoLayout(styles: Record<string, string>): AutoLayout | undefined {
+    function detectAutoLayout(styles: Record<string, string>, childCount: number = 0): AutoLayout | undefined {
       const display = styles['display'] || '';
       const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
 
@@ -335,7 +335,25 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      if (!isFlex) return undefined;
+      if (!isFlex) {
+        // Block element with multiple children → default vertical auto layout
+        const isBlock = !display || display === 'block' || display === 'list-item' || display === 'flow-root';
+        if (isBlock && childCount > 1) {
+          const pt = parseFloat(styles['padding-top'] || '0') || 0;
+          const pr = parseFloat(styles['padding-right'] || '0') || 0;
+          const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+          const pl = parseFloat(styles['padding-left'] || '0') || 0;
+          const gap = parseFloat(styles['gap'] || '0') || 0;
+          return {
+            ...DEFAULT_AUTO_LAYOUT,
+            direction: 'vertical',
+            gap,
+            padding: { top: pt, right: pr, bottom: pb, left: pl },
+            independentPadding: !(pt === pr && pr === pb && pb === pl),
+          };
+        }
+        return undefined;
+      }
 
       const flexDir = styles['flex-direction'] || 'row';
       const gap = parseFloat(styles['gap'] || '0') || 0;
@@ -432,7 +450,8 @@ export async function POST(request: NextRequest) {
     ): PenmaNode {
       if (!node) throw new Error('Node is null');
 
-      const autoLayout = detectAutoLayout(node.styles);
+      const childCount = node.children?.length ?? 0;
+      const autoLayout = detectAutoLayout(node.styles, childCount);
       const sizing = parentAutoLayout
         ? detectChildSizing(node.styles, parentAutoLayout)
         : autoLayout
@@ -643,7 +662,7 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
         const mapJustify = (v: string) => { if (v === 'center') return 'center' as const; if (v === 'flex-end' || v === 'end') return 'end' as const; if (v === 'space-between') return 'space-between' as const; return 'start' as const; };
         const mapAlign = (v: string) => { if (v === 'center') return 'center' as const; if (v === 'flex-end' || v === 'end') return 'end' as const; if (v === 'stretch') return 'stretch' as const; if (v === 'baseline') return 'baseline' as const; return 'start' as const; };
 
-        function detectAutoLayout(styles: Record<string, string>): AutoLayout | undefined {
+        function detectAutoLayout(styles: Record<string, string>, childCount: number = 0): AutoLayout | undefined {
           const display = styles['display'] || '';
           const flexGrow = parseFloat(styles['flex-grow'] || '0') || 0;
 
@@ -677,7 +696,20 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
             return { ...DEFAULT_AUTO_LAYOUT, direction: 'vertical', gap, padding: { top: pt, right: pr, bottom: pb, left: pl }, independentPadding: !(pt === pr && pr === pb && pb === pl), clipContent: styles['overflow-y'] === 'auto' || styles['overflow-y'] === 'scroll' || styles['overflow'] === 'auto' };
           }
 
-          if (!isFlex) return undefined;
+          if (!isFlex) {
+            // Block element with multiple children → default vertical auto layout
+            const isBlock = !display || display === 'block' || display === 'list-item' || display === 'flow-root';
+            if (isBlock && childCount > 1) {
+              const pt = parseFloat(styles['padding-top'] || '0') || 0;
+              const pr = parseFloat(styles['padding-right'] || '0') || 0;
+              const pb = parseFloat(styles['padding-bottom'] || '0') || 0;
+              const pl = parseFloat(styles['padding-left'] || '0') || 0;
+              const gap = parseFloat(styles['gap'] || '0') || 0;
+              return { ...DEFAULT_AUTO_LAYOUT, direction: 'vertical', gap, padding: { top: pt, right: pr, bottom: pb, left: pl }, independentPadding: !(pt === pr && pr === pb && pb === pl) };
+            }
+            return undefined;
+          }
+
           const flexDir = styles['flex-direction'] || 'row';
           const gap = parseFloat(styles['gap'] || '0') || 0;
           const pt = parseFloat(styles['padding-top'] || '0') || 0;
@@ -706,7 +738,8 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
 
         function assignIds(node: any, parentAL?: AutoLayout): PenmaNode {
           if (!node) throw new Error('Node is null');
-          const autoLayout = detectAutoLayout(node.styles);
+          const childCount = node.children?.length ?? 0;
+          const autoLayout = detectAutoLayout(node.styles, childCount);
           const sizing = parentAL ? detectChildSizing(node.styles, parentAL) : autoLayout ? { ...DEFAULT_SIZING } : undefined;
           return { id: uuid(), tagName: node.tagName, attributes: node.attributes, children: node.children.map((child: any) => assignIds(child, autoLayout)), textContent: node.textContent, rawHtml: node.rawHtml, styles: { computed: node.styles, overrides: {} }, bounds: node.bounds, visible: true, locked: false, name: node.name, autoLayout, sizing };
         }
