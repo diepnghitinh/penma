@@ -329,6 +329,7 @@ const ViewportSizeLabel: React.FC<{
 
   return (
     <span
+      data-viewport-size
       className="text-[9px] font-normal cursor-pointer hover:underline"
       style={{ color: 'var(--penma-text-muted)' }}
       onClick={startEdit}
@@ -437,40 +438,62 @@ const FrameResizeHandle: React.FC<{
   onResize: (docId: string, viewport: { width: number; height: number }) => void;
   onStart: () => void;
 }> = ({ docId, direction, viewport, zoom, onResize, onStart }) => {
-  const [dragging, setDragging] = useState(false);
   const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const frameElRef = useRef<HTMLElement | null>(null);
+  const sizeElRef = useRef<HTMLElement | null>(null);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragging(true);
     startRef.current = { x: e.clientX, y: e.clientY, w: viewport.width, h: viewport.height };
     onStart();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [viewport, onStart]);
 
-  useEffect(() => {
-    if (!dragging) return;
+    // Find the frame element and size label for direct DOM manipulation
+    const handle = e.currentTarget as HTMLElement;
+    const wrapper = handle.parentElement;
+    frameElRef.current = wrapper?.querySelector('.shadow-2xl') as HTMLElement ?? wrapper?.firstElementChild as HTMLElement;
+    sizeElRef.current = wrapper?.querySelector('[data-viewport-size]') as HTMLElement;
 
-    const handleMove = (e: PointerEvent) => {
-      const dx = (e.clientX - startRef.current.x) / zoom;
-      const dy = (e.clientY - startRef.current.y) / zoom;
+    const handleMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startRef.current.x) / zoom;
+      const dy = (ev.clientY - startRef.current.y) / zoom;
       let w = startRef.current.w;
       let h = startRef.current.h;
-      if (direction === 'e' || direction === 'se') w = Math.max(200, startRef.current.w + dx);
-      if (direction === 's' || direction === 'se') h = Math.max(200, startRef.current.h + dy);
-      onResize(docId, { width: Math.round(w), height: Math.round(h) });
+      if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
+      if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
+
+      // Direct DOM update for smooth dragging (no React re-render)
+      const frame = frameElRef.current;
+      if (frame) {
+        if (direction === 'e' || direction === 'se') frame.style.width = `${w}px`;
+        if (direction === 's' || direction === 'se') frame.style.minHeight = `${h}px`;
+      }
+      // Update handle positions
+      handle.style.left = direction === 's' ? '0' : `${w - (direction === 'se' ? 4 : 2)}px`;
+      handle.style.top = direction === 'e' ? '0' : `${h - (direction === 'se' ? 4 : 2)}px`;
+      if (direction === 'e') handle.style.height = `${h}px`;
+      if (direction === 's') handle.style.width = `${w}px`;
+      // Update size label
+      if (sizeElRef.current) sizeElRef.current.textContent = `${w}×${h}`;
     };
 
-    const handleUp = () => setDragging(false);
+    const handleUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      const dx = (ev.clientX - startRef.current.x) / zoom;
+      const dy = (ev.clientY - startRef.current.y) / zoom;
+      let w = startRef.current.w;
+      let h = startRef.current.h;
+      if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
+      if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
+      // Commit to store on release
+      onResize(docId, { width: w, height: h });
+    };
 
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', handleUp);
-    return () => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-    };
-  }, [dragging, zoom, docId, direction, onResize]);
+  }, [viewport, zoom, docId, direction, onResize, onStart]);
 
   const style: React.CSSProperties = {
     position: 'absolute',
