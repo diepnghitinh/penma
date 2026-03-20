@@ -2,9 +2,12 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Globe, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone, Check } from 'lucide-react';
+import { v4 as uuid } from 'uuid';
 import { useEditorStore } from '@/store/editor-store';
 import type { FetchUrlResponse } from '@/types/api';
+import type { PenmaDocument, PenmaNode } from '@/types/document';
 import { autoDetectComponents } from '@/lib/design-system/component-detector';
+import { flattenTree } from '@/lib/utils/tree-utils';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },
@@ -36,6 +39,7 @@ export const ImportUrlDialog: React.FC = () => {
   const [customWidth, setCustomWidth] = useState('');
   const [customHeight, setCustomHeight] = useState('');
   const [useCustom, setUseCustom] = useState(false);
+  const [autoComponents, setAutoComponents] = useState(true);
 
   const getViewport = useCallback(() => {
     if (useCustom) {
@@ -125,11 +129,20 @@ export const ImportUrlDialog: React.FC = () => {
                 const doc = JSON.parse(fullJson);
 
                 // Auto-detect design system components (buttons, cards, nav items, etc.)
-                if (doc.rootNode) {
+                if (autoComponents && doc.rootNode) {
                   autoDetectComponents(doc.rootNode);
-                }
 
-                setDocument(doc);
+                  // Extract unique master components into a separate frame
+                  const dsFrame = buildDesignSystemFrame(doc);
+                  if (dsFrame) {
+                    setDocument(doc);
+                    setDocument(dsFrame);
+                  } else {
+                    setDocument(doc);
+                  }
+                } else {
+                  setDocument(doc);
+                }
 
                 // Center camera on the new frame
                 const store = useEditorStore.getState();
@@ -163,7 +176,7 @@ export const ImportUrlDialog: React.FC = () => {
       setIsLoading(false);
       setImporting(false);
     }
-  }, [url, setDocument, setImporting, setImportError, setShowImportDialog, getViewport]);
+  }, [url, setDocument, setImporting, setImportError, setShowImportDialog, getViewport, autoComponents]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -308,6 +321,23 @@ export const ImportUrlDialog: React.FC = () => {
             )}
           </div>
 
+          {/* Auto-detect components checkbox */}
+          <label className="mt-4 flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autoComponents}
+              onChange={(e) => setAutoComponents(e.target.checked)}
+              disabled={isLoading}
+              className="h-4 w-4 rounded border-neutral-300 text-blue-500 focus:ring-blue-200 cursor-pointer accent-blue-500"
+            />
+            <div>
+              <span className="text-xs font-medium text-neutral-700">Auto-detect design system components</span>
+              <p className="text-[10px] text-neutral-400 mt-0.5">
+                Identifies buttons, cards, nav items and creates a component frame
+              </p>
+            </div>
+          </label>
+
           {/* Example URLs */}
           <div className="mt-4">
             <p className="text-xs text-neutral-400 mb-2">Try an example:</p>
@@ -340,6 +370,117 @@ export const ImportUrlDialog: React.FC = () => {
     </div>
   );
 };
+
+// ── Helpers ─────────────────────────────────────────────────
+
+const TABLE_TAGS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col']);
+
+/** Recursively replace table-related tags with div to avoid invalid HTML nesting */
+function normalizeTableTags(node: PenmaNode): void {
+  if (TABLE_TAGS.has(node.tagName)) {
+    node.tagName = 'div';
+  }
+  for (const child of node.children) {
+    normalizeTableTags(child);
+  }
+}
+
+// ── Design system frame builder ─────────────────────────────
+
+function buildDesignSystemFrame(doc: PenmaDocument): PenmaDocument | null {
+  const allNodes = flattenTree(doc.rootNode);
+  const masters = allNodes.filter((n) => n.componentId);
+
+  if (masters.length === 0) return null;
+
+  // Clone each master component for the design system frame
+  const PADDING = 40;
+  const GAP = 32;
+  let offsetY = PADDING;
+
+  const componentNodes: PenmaNode[] = [];
+
+  for (const master of masters) {
+    const cloned: PenmaNode = JSON.parse(JSON.stringify(master));
+    // Assign fresh IDs but keep componentRef pointing to original master
+    const assignIds = (n: PenmaNode) => {
+      n.id = uuid();
+      n.componentRef = undefined;
+      n.componentId = undefined;
+      for (const child of n.children) assignIds(child);
+    };
+    assignIds(cloned);
+
+    // Set as a ref pointing to the original master
+    cloned.componentRef = master.componentId;
+    cloned.name = master.name;
+    // Normalize table-related tags to div to avoid invalid HTML nesting
+    normalizeTableTags(cloned);
+
+    // Wrap in a container div for safe rendering
+    const wrapper: PenmaNode = {
+      id: uuid(),
+      tagName: 'div',
+      attributes: {},
+      children: [cloned],
+      styles: {
+        computed: {
+          display: 'block',
+          position: 'relative',
+          left: `${PADDING}px`,
+          top: `${offsetY}px`,
+        },
+        overrides: {},
+      },
+      bounds: { x: PADDING, y: offsetY, width: cloned.bounds.width, height: cloned.bounds.height },
+      visible: true,
+      locked: false,
+      name: cloned.name,
+    };
+
+    offsetY += cloned.bounds.height + GAP;
+    componentNodes.push(wrapper);
+  }
+
+  const frameHeight = offsetY + PADDING;
+  const frameWidth = 400;
+
+  // Build the frame document
+  const rootNode: PenmaNode = {
+    id: uuid(),
+    tagName: 'div',
+    attributes: { class: 'design-system-frame' },
+    children: componentNodes,
+    styles: {
+      computed: {
+        display: 'block',
+        width: `${frameWidth}px`,
+        height: `${frameHeight}px`,
+        'background-color': '#ffffff',
+        position: 'relative',
+      },
+      overrides: {},
+    },
+    bounds: { x: 0, y: 0, width: frameWidth, height: frameHeight },
+    visible: true,
+    locked: false,
+    name: 'Design System',
+  };
+
+  let hostname = doc.sourceUrl;
+  try { hostname = new URL(doc.sourceUrl).hostname; } catch {}
+
+  return {
+    id: uuid(),
+    sourceUrl: doc.sourceUrl,
+    importedAt: new Date().toISOString(),
+    viewport: { width: frameWidth, height: frameHeight },
+    rootNode,
+    assets: {},
+    canvasX: 0,
+    canvasY: 0,
+  };
+}
 
 // ── Real-time import progress (driven by SSE from server) ───
 

@@ -1,8 +1,15 @@
 # Features 
+9. Export to Json
++ Figma: 
+- Must have export image and svg if have.
+- 
+
 9. Import web
-+ Automatically generate design system components.
++ Modal Import from url, add checkbox allow Automatically generate design system components.
+design system components will be contained in a new frame.
 8. Component
 - Component references are independent of the original component's position.
+- In Component references, right click support go to main component.
 7. Keyboard Shortcuts
 - Support copy/paste element: copy element & children element, paster too
 6. 
