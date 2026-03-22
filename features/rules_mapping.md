@@ -12,6 +12,7 @@
     --> 
     Figma: create a Container use: Auto layout
 
-4. Penma: Component/Button/Elements
+4. Penma: Component/Button & attributes
+    Text in Comonent
     --> 
-    Figma: create a Container use: Auto layout, keep padding & all attributes
+    Figma: create a Container use: Auto layout

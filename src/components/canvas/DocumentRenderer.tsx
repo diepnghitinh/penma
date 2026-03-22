@@ -187,6 +187,42 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     Object.assign(style, childCSS);
   }
 
+  // ── Text elements: strip spacing, apply vertical alignment ──
+  const isTextElement = node.tagName === 'span'
+    && !!node.textContent
+    && node.children.length === 0;
+  if (isTextElement) {
+    delete style.padding;
+    delete style.paddingTop;
+    delete style.paddingRight;
+    delete style.paddingBottom;
+    delete style.paddingLeft;
+    delete style.margin;
+    delete style.marginTop;
+    delete style.marginRight;
+    delete style.marginBottom;
+    delete style.marginLeft;
+
+    // Remove custom properties from inline style (not valid CSS)
+    delete (style as Record<string, unknown>)['textValign'];
+    delete style.textAlign;
+
+    // Use flex to handle both text-align and text-valign
+    const valign = effectiveStyles['text-valign'] || 'middle';
+    const halign = effectiveStyles['text-align'] || 'left';
+
+    const valignMap: Record<string, string> = {
+      top: 'start', middle: 'center', bottom: 'end',
+    };
+    const halignMap: Record<string, string> = {
+      left: 'start', center: 'center', right: 'end',
+    };
+
+    style.display = 'flex';
+    style.alignItems = valignMap[valign] || 'start';
+    style.justifyContent = halignMap[halign] || 'start';
+  }
+
   const isSelected = selectedIds.includes(node.id);
 
   // Build safe attributes (filter out event handlers)

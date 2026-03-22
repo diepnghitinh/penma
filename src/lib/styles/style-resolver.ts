@@ -42,7 +42,7 @@ export const STYLE_CATEGORIES = {
   ],
   typography: [
     'font-family', 'font-size', 'font-weight', 'line-height',
-    'letter-spacing', 'text-align', 'text-decoration', 'color',
+    'letter-spacing', 'text-align', 'text-valign', 'text-decoration', 'color',
   ],
   background: [
     'background-color', 'background-image', 'background-size',

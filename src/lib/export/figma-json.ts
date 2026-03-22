@@ -121,6 +121,7 @@ interface FigmaTextStyle {
   lineHeightPx?: number;
   letterSpacing?: number;
   textAlignHorizontal?: string;
+  textAlignVertical?: string;
   textDecoration?: string;
 }
 
@@ -392,6 +393,7 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       lineHeightPx: parseLineHeight(styles['line-height'], styles['font-size']),
       letterSpacing: parseFloat(styles['letter-spacing'] || '0') || 0,
       textAlignHorizontal: mapTextAlign(styles['text-align']),
+      textAlignVertical: mapTextValign(styles['text-valign']),
       textDecoration: mapTextDecoration(styles['text-decoration']),
     };
 
@@ -548,6 +550,7 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
         lineHeightPx: parseLineHeight(styles['line-height'], styles['font-size']),
         letterSpacing: parseFloat(styles['letter-spacing'] || '0') || 0,
         textAlignHorizontal: mapTextAlign(styles['text-align']),
+        textAlignVertical: mapTextValign(styles['text-valign']),
         textDecoration: mapTextDecoration(styles['text-decoration']),
       },
       fills: textColor ? [{ type: 'SOLID', visible: true, color: textColor }] : [],
@@ -627,6 +630,14 @@ function mapTextAlign(align: string | undefined): string {
     case 'right': return 'RIGHT';
     case 'justify': return 'JUSTIFIED';
     default: return 'LEFT';
+  }
+}
+
+function mapTextValign(valign: string | undefined): string {
+  switch (valign) {
+    case 'middle': return 'CENTER';
+    case 'bottom': return 'BOTTOM';
+    default: return 'TOP';
   }
 }
 

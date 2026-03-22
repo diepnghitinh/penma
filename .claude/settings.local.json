@@ -20,7 +20,8 @@
       "Bash(npm install:*)",
       "Bash(pnpm:*)",
       "Bash(git -C /Volumes/DEVELOP/GITHUB/html2design log --oneline)",
-      "Bash(grep -c '\"\"svgData\"\"' \"/Users/dntmaster/Downloads/mvp-v3-linkadz-ai \\(2\\).json\")"
+      "Bash(grep -c '\"\"svgData\"\"' \"/Users/dntmaster/Downloads/mvp-v3-linkadz-ai \\(2\\).json\")",
+      "Bash(xargs ls:*)"
     ]
   }
 }

@@ -69,6 +69,26 @@ const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) 
                       className="flex-1 rounded border border-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none"
                     />
                   </div>
+                ) : prop === 'text-valign' ? (
+                  <select
+                    value={value || 'middle'}
+                    onChange={(e) => handleStyleChange(prop, e.target.value)}
+                    className="flex-1 rounded border border-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="top">Top</option>
+                    <option value="middle">Middle</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+                ) : prop === 'text-align' ? (
+                  <select
+                    value={value || 'left'}
+                    onChange={(e) => handleStyleChange(prop, e.target.value)}
+                    className="flex-1 rounded border border-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
                 ) : (
                   <input
                     type="text"
@@ -197,7 +217,16 @@ export const StylePanel: React.FC = () => {
         {/* Auto Layout — Figma-style layout controls */}
         <AutoLayoutPanel node={selectedNode} />
 
-        {Object.entries(STYLE_CATEGORIES).map(([category, properties]) => (
+        {Object.entries(STYLE_CATEGORIES)
+          .filter(([category]) => {
+            // Text elements (span with text, no children) don't support spacing
+            const isTextElement = selectedNode.tagName === 'span'
+              && !!selectedNode.textContent
+              && selectedNode.children.length === 0;
+            if (isTextElement && category === 'spacing') return false;
+            return true;
+          })
+          .map(([category, properties]) => (
           <StyleSection
             key={category}
             title={category.charAt(0).toUpperCase() + category.slice(1)}
