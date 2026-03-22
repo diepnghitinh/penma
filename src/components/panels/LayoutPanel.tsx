@@ -288,10 +288,131 @@ const DimensionRow: React.FC<{
 type ResizingPreset = 'auto-width' | 'auto-height' | 'fixed';
 
 function getResizingPreset(hMode: SizingModeValue, vMode: SizingModeValue): ResizingPreset {
-  if (hMode === 'fixed' && vMode === 'fixed') return 'fixed';
-  if (hMode !== 'fixed') return 'auto-width';
-  return 'auto-height';
+  if (hMode === 'hug' && vMode === 'hug') return 'auto-width';
+  if (vMode === 'hug') return 'auto-height';
+  return 'fixed';
 }
+
+// ── Compact dimension cell: [W 34 Hug] — value + mode in one pill ──
+
+const MODE_OPTIONS: { value: SizingModeValue; label: string }[] = [
+  { value: 'fixed', label: 'Fixed' },
+  { value: 'hug', label: 'Hug' },
+  { value: 'fill', label: 'Fill' },
+];
+
+const DimCell: React.FC<{
+  label: string;
+  value: number;
+  mode: SizingModeValue;
+  onChange: (v: string) => void;
+  onModeChange: (m: SizingModeValue) => void;
+  fillDisabled?: boolean;
+}> = ({ label, value, mode, onChange, onModeChange, fillDisabled }) => {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const display = value % 1 === 0 ? String(value) : value.toFixed(2);
+  const modeLabel = mode === 'hug' ? 'Hug' : mode === 'fill' ? 'Fill' : 'Fixed';
+
+  const commit = () => {
+    const v = editValue.trim();
+    if (v && v !== display) onChange(v);
+    setEditing(false);
+  };
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.select();
+  }, [editing]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [dropdownOpen]);
+
+  return (
+    <div
+      className="flex flex-1 min-w-0 h-[32px] items-center rounded-lg px-2 gap-1.5"
+      style={{ background: 'var(--penma-hover-bg)' }}
+    >
+      <span className="text-[11px] font-medium shrink-0 select-none" style={{ color: 'var(--penma-text-muted)' }}>{label}</span>
+      {editing ? (
+        <input
+          ref={inputRef} autoFocus value={editValue}
+          onChange={(e) => setEditValue(e.target.value.replace(/[^0-9.\-]/g, ''))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+            if (e.key === 'ArrowUp') { e.preventDefault(); setEditValue(String(Math.round((parseFloat(editValue) || 0) + (e.shiftKey ? 10 : 1)))); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); setEditValue(String(Math.max(0, Math.round((parseFloat(editValue) || 0) - (e.shiftKey ? 10 : 1))))); }
+          }}
+          className="w-10 min-w-0 text-[11px] outline-none bg-transparent rounded px-0.5
+                     [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          style={{ color: 'var(--penma-text)', border: '1px solid var(--penma-primary)' }}
+        />
+      ) : (
+        <button
+          onClick={() => { setEditing(true); setEditValue(display); }}
+          className="text-[11px] cursor-text hover:underline"
+          style={{ color: 'var(--penma-text)' }}
+        >{display}</button>
+      )}
+      {/* Mode dropdown */}
+      <div ref={dropdownRef} className="relative ml-auto shrink-0">
+        <button
+          onClick={() => setDropdownOpen(!dropdownOpen)}
+          className="text-[11px] font-medium cursor-pointer hover:opacity-70 transition-opacity"
+          style={{ color: 'var(--penma-text)' }}
+        >
+          {modeLabel}
+        </button>
+        {dropdownOpen && (
+          <div
+            className="absolute right-0 top-full z-50 mt-1 min-w-[120px] rounded-lg py-1"
+            style={{
+              background: 'var(--penma-surface)',
+              border: '1px solid var(--penma-border)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
+            }}
+          >
+            {MODE_OPTIONS.map((opt) => {
+              const disabled = opt.value === 'fill' && fillDisabled;
+              const isActive = mode === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => { if (!disabled) { onModeChange(opt.value); setDropdownOpen(false); } }}
+                  disabled={disabled}
+                  className={`flex w-full items-center px-2.5 py-[6px] text-[11px] text-left cursor-pointer transition-colors duration-150
+                    ${isActive ? 'font-medium' : ''}
+                    ${disabled ? 'cursor-not-allowed opacity-35' : 'hover:bg-[var(--penma-hover-bg)]'}`}
+                  style={{
+                    color: isActive ? 'var(--penma-primary)' : 'var(--penma-text)',
+                    background: isActive ? 'var(--penma-primary-light)' : undefined,
+                  }}
+                >
+                  {opt.label}
+                  {isActive && (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-auto" stroke="var(--penma-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1.5,5.5 4,8 8.5,2.5" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ── Main Layout Panel ──────────────────────────────────────
 
@@ -384,13 +505,17 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
       pushHistory('Change resizing');
       switch (preset) {
         case 'auto-width':
+          // Both W and H hug content
           updateSizing(node.id, 'horizontal', 'hug');
+          updateSizing(node.id, 'vertical', 'hug');
           break;
         case 'auto-height':
-          updateSizing(node.id, 'vertical', 'hug');
+          // W fixed, H hug content
           updateSizing(node.id, 'horizontal', 'fixed');
+          updateSizing(node.id, 'vertical', 'hug');
           break;
         case 'fixed':
+          // Both fixed
           updateSizing(node.id, 'horizontal', 'fixed');
           updateSizing(node.id, 'vertical', 'fixed');
           break;
@@ -418,7 +543,7 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
       </div>
 
       <div className="px-3 pb-3 flex flex-col gap-2.5">
-        {/* ── Resizing presets ── */}
+        {/* ── Row 1: Switcher ── */}
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-medium" style={{ color: 'var(--penma-text-muted)' }}>
             Resizing
@@ -457,17 +582,35 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
           </div>
         </div>
 
-        {/* ── Dimensions: W and H each on own row with mode selector ── */}
+        {/* ── Row 2: W & H always visible ── */}
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-medium" style={{ color: 'var(--penma-text-muted)' }}>
-              Dimensions
-            </span>
+          <span className="text-[10px] font-medium" style={{ color: 'var(--penma-text-muted)' }}>
+            {resizingPreset === 'fixed' ? 'Dimensions' : 'Resizing'}
+          </span>
+
+          {/* Side-by-side [W val Mode] [H val Mode] + constrain */}
+          <div className="flex items-center gap-1.5">
+            <DimCell
+              label="W"
+              value={w}
+              mode={hMode}
+              onChange={(v) => handleDimensionChange('width', v)}
+              onModeChange={(m) => handleSizingChange('horizontal', m)}
+              fillDisabled={fillDisabled}
+            />
+            <DimCell
+              label="H"
+              value={h}
+              mode={vMode}
+              onChange={(v) => handleDimensionChange('height', v)}
+              onModeChange={(m) => handleSizingChange('vertical', m)}
+              fillDisabled={fillDisabled}
+            />
             <button
               onClick={() => setConstrainProportions(!constrainProportions)}
               title={constrainProportions ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
               aria-pressed={constrainProportions}
-              className="shrink-0 flex h-[20px] w-[20px] items-center justify-center rounded cursor-pointer
+              className="shrink-0 flex h-[28px] w-[28px] items-center justify-center rounded cursor-pointer
                          transition-all duration-150 ease-out"
               style={{
                 background: constrainProportions ? 'var(--penma-primary-light)' : 'transparent',
@@ -476,24 +619,6 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
             >
               <ConstrainIcon active={constrainProportions} size={14} />
             </button>
-          </div>
-          <div className="flex flex-col gap-1">
-            <DimensionRow
-              label="W"
-              value={parseFloat(w.toFixed(2))}
-              mode={hMode}
-              onValueChange={(v) => handleDimensionChange('width', v)}
-              onModeChange={(m) => handleSizingChange('horizontal', m)}
-              fillDisabled={fillDisabled}
-            />
-            <DimensionRow
-              label="H"
-              value={parseFloat(h.toFixed(2))}
-              mode={vMode}
-              onValueChange={(v) => handleDimensionChange('height', v)}
-              onModeChange={(m) => handleSizingChange('vertical', m)}
-              fillDisabled={fillDisabled}
-            />
           </div>
         </div>
       </div>
