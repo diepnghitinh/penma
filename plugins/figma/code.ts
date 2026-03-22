@@ -281,11 +281,17 @@ async function createTextFromPenma(penmaNode: any): Promise<TextNode> {
     text.fills = [{ type: 'SOLID', color: { r: color.r, g: color.g, b: color.b }, opacity: color.a }];
   }
 
-  // Text align
+  // Text align (horizontal)
   const align = styles['text-align'];
   if (align === 'center') text.textAlignHorizontal = 'CENTER';
   else if (align === 'right') text.textAlignHorizontal = 'RIGHT';
   else if (align === 'justify') text.textAlignHorizontal = 'JUSTIFIED';
+
+  // Text align (vertical)
+  const valign = styles['text-valign'];
+  if (valign === 'middle') text.textAlignVertical = 'CENTER';
+  else if (valign === 'bottom') text.textAlignVertical = 'BOTTOM';
+  else text.textAlignVertical = 'TOP';
 
   // Size
   if (penmaNode.bounds) {
@@ -484,7 +490,9 @@ async function createTextNode(data: any): Promise<TextNode> {
   if (style.fontSize) text.fontSize = style.fontSize;
   if (style.lineHeightPx) text.lineHeight = { value: style.lineHeightPx, unit: 'PIXELS' };
   if (style.letterSpacing) text.letterSpacing = { value: style.letterSpacing, unit: 'PIXELS' };
-  if (style.textAlignHorizontal) text.textAlignHorizontal = style.textAlignHorizontal as any;
+  if (data.textAlignHorizontal) text.textAlignHorizontal = data.textAlignHorizontal as any;
+  else if (style.textAlignHorizontal) text.textAlignHorizontal = style.textAlignHorizontal as any;
+  if (data.textAlignVertical) text.textAlignVertical = data.textAlignVertical as any;
 
   // Text color from fills
   if (data.fills && data.fills.length > 0) {

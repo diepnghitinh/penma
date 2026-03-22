@@ -13,6 +13,9 @@
     Figma: create a Container use: Auto layout
 
 4. Penma: Component/Button & attributes
-    Text in Comonent
+    Text in Component
     --> 
     Figma: create a Container use: Auto layout
+
+5.
+penma: span text-valign ==> figma: Alignment (top, middle, bottom)

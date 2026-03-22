@@ -46,6 +46,8 @@ interface FigmaNode {
   // Text-specific
   characters?: string;
   style?: FigmaTextStyle;
+  textAlignHorizontal?: string;
+  textAlignVertical?: string;
   // Auto layout (container)
   layoutMode?: string;
   primaryAxisSizingMode?: string;
@@ -120,8 +122,6 @@ interface FigmaTextStyle {
   fontWeight: number;
   lineHeightPx?: number;
   letterSpacing?: number;
-  textAlignHorizontal?: string;
-  textAlignVertical?: string;
   textDecoration?: string;
 }
 
@@ -386,14 +386,14 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
   // Text properties (skip for components — they get an inner TEXT child instead)
   if (isText && node.textContent && !isComponent && !isInstance) {
     result.characters = node.textContent;
+    result.textAlignHorizontal = mapTextAlign(styles['text-align']);
+    result.textAlignVertical = mapTextValign(styles['text-valign'])
     result.style = {
       fontFamily: (styles['font-family'] || 'Inter').split(',')[0].replace(/['"]/g, ''),
       fontSize: parseFloat(styles['font-size'] || '16'),
       fontWeight: parseInt(styles['font-weight'] || '400') || 400,
       lineHeightPx: parseLineHeight(styles['line-height'], styles['font-size']),
       letterSpacing: parseFloat(styles['letter-spacing'] || '0') || 0,
-      textAlignHorizontal: mapTextAlign(styles['text-align']),
-      textAlignVertical: mapTextValign(styles['text-valign']),
       textDecoration: mapTextDecoration(styles['text-decoration']),
     };
 
@@ -543,14 +543,14 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       locked: false,
       absoluteBoundingBox: { ...result.absoluteBoundingBox },
       characters: node.textContent,
+      textAlignHorizontal: mapTextAlign(styles['text-align']),
+      textAlignVertical: mapTextValign(styles['text-valign']),
       style: {
         fontFamily: (styles['font-family'] || 'Inter').split(',')[0].replace(/['"]/g, ''),
         fontSize: parseFloat(styles['font-size'] || '16'),
         fontWeight: parseInt(styles['font-weight'] || '400') || 400,
         lineHeightPx: parseLineHeight(styles['line-height'], styles['font-size']),
         letterSpacing: parseFloat(styles['letter-spacing'] || '0') || 0,
-        textAlignHorizontal: mapTextAlign(styles['text-align']),
-        textAlignVertical: mapTextValign(styles['text-valign']),
         textDecoration: mapTextDecoration(styles['text-decoration']),
       },
       fills: textColor ? [{ type: 'SOLID', visible: true, color: textColor }] : [],
