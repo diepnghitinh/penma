@@ -319,15 +319,44 @@ export const SelectionOverlay: React.FC = () => {
             </>
           )}
 
-          {/* Size label */}
-          <div
-            className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-white"
-            style={{ background: 'var(--penma-primary)' }}
-          >
-            {Math.round(rect.width)} × {Math.round(rect.height)}
-          </div>
+          {/* Size label — read from node data to stay consistent with sidebar */}
+          <SizeLabel nodeId={id} />
         </div>
       ))}
+    </div>
+  );
+};
+
+// ── Size label reading from node data (consistent with sidebar W/H) ──
+
+const SizeLabel: React.FC<{ nodeId: string }> = ({ nodeId }) => {
+  const documents = useEditorStore((s) => s.documents);
+
+  const node = (() => {
+    for (const doc of documents) {
+      const found = findNodeById(doc.rootNode, nodeId);
+      if (found) return found;
+    }
+    return null;
+  })();
+
+  if (!node) return null;
+
+  // Same logic as DimensionInputs in StylePanel
+  const parentDoc = documents.find((d) => d.rootNode.id === nodeId);
+  const w = parentDoc
+    ? parentDoc.viewport.width
+    : Math.round(parseFloat(node.styles.overrides['width'] || '') || node.bounds.width);
+  const h = parentDoc
+    ? parentDoc.viewport.height
+    : Math.round(parseFloat(node.styles.overrides['height'] || '') || node.bounds.height);
+
+  return (
+    <div
+      className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-white"
+      style={{ background: 'var(--penma-primary)' }}
+    >
+      {w} × {h}
     </div>
   );
 };
