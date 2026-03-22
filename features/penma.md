@@ -103,3 +103,9 @@ pattern:
 + div
 + 연동됨 is a text element.
 final result penma like concept <div class="_badge_1smf8_78 _connected_1smf8_87"><span>연동됨</span><div>
+
+##
+Layout --> resizing: auto width, auto height, fixed size
+Layout --> dimensions: 
++ W: fixed width,hug content, fill container. 
++ H: fixed height,hug content, fill container.

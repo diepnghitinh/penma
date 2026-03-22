@@ -19,3 +19,5 @@
 
 5.
 penma: span text-valign ==> figma: Alignment (top, middle, bottom)
+
+6. if span class has attr 

@@ -7,6 +7,7 @@ import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
 import { STYLE_CATEGORIES } from '@/lib/styles/style-resolver';
 import { AutoLayoutPanel } from './AutoLayoutPanel';
+import { LayoutPanel } from './LayoutPanel';
 import { ExportPanel } from './ExportPanel';
 import type { PenmaNode } from '@/types/document';
 
@@ -200,9 +201,9 @@ export const StylePanel: React.FC = () => {
         )}
       </div>
 
-      {/* Dimensions — editable W/H/X/Y */}
+      {/* Layout — Figma-style resizing + dimensions */}
       {!isInstance && (
-        <DimensionInputs node={selectedNode} />
+        <LayoutPanel node={selectedNode} />
       )}
       {isInstance && (
         <div className="border-b border-neutral-100 px-3 py-2">
@@ -450,116 +451,6 @@ const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
             </div>
           )}
         </div>
-      )}
-    </div>
-  );
-};
-
-// ── Editable dimension inputs ───────────────────────────────
-
-const DimensionInputs: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
-  const updateDocumentViewport = useEditorStore((s) => s.updateDocumentViewport);
-  const documents = useEditorStore((s) => s.documents);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-
-  // Check if this node is a document root node
-  const parentDoc = documents.find((d) => d.rootNode.id === node.id);
-
-  const handleChange = useCallback(
-    (prop: 'width' | 'height', value: string) => {
-      const num = parseInt(value, 10);
-      if (isNaN(num) || num < 0) return;
-      pushHistory(`Resize ${prop}`);
-      if (parentDoc) {
-        // Root node: update viewport (controls frame size) and root node styles
-        const newViewport = {
-          width: prop === 'width' ? num : parentDoc.viewport.width,
-          height: prop === 'height' ? num : parentDoc.viewport.height,
-        };
-        updateDocumentViewport(parentDoc.id, newViewport);
-        updateNodeStyles(node.id, { [prop]: `${num}px` });
-      } else {
-        // Regular node
-        updateNodeStyles(node.id, { [prop]: `${num}px` });
-        updateNodeBounds(node.id, { [prop]: num });
-      }
-    },
-    [node.id, updateNodeStyles, updateNodeBounds, updateDocumentViewport, parentDoc, pushHistory]
-  );
-
-  const handlePositionChange = useCallback(
-    (prop: 'left' | 'top', value: string) => {
-      const num = parseInt(value, 10);
-      if (isNaN(num)) return;
-      pushHistory(`Move ${prop}`);
-      updateNodeStyles(node.id, { position: 'relative', [prop]: `${num}px` });
-      updateNodeBounds(node.id, prop === 'left' ? { x: num } : { y: num });
-    },
-    [node.id, updateNodeStyles, updateNodeBounds, pushHistory]
-  );
-
-  // Read effective values: root nodes use viewport, others use overrides/bounds
-  const w = parentDoc
-    ? parentDoc.viewport.width
-    : Math.round(parseFloat(node.styles.overrides['width'] || '') || node.bounds.width);
-  const h = parentDoc
-    ? parentDoc.viewport.height
-    : Math.round(parseFloat(node.styles.overrides['height'] || '') || node.bounds.height);
-  const x = Math.round(parseFloat(node.styles.overrides['left'] || '0') || node.bounds.x);
-  const y = Math.round(parseFloat(node.styles.overrides['top'] || '0') || node.bounds.y);
-
-  return (
-    <div className="border-b border-neutral-100 px-3 py-2">
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-        <DimInput label="W" value={w} onChange={(v) => handleChange('width', v)} />
-        <DimInput label="H" value={h} onChange={(v) => handleChange('height', v)} />
-        <DimInput label="X" value={x} onChange={(v) => handlePositionChange('left', v)} />
-        <DimInput label="Y" value={y} onChange={(v) => handlePositionChange('top', v)} />
-      </div>
-    </div>
-  );
-};
-
-const DimInput: React.FC<{
-  label: string;
-  value: number;
-  onChange: (value: string) => void;
-}> = ({ label, value, onChange }) => {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-
-  const commit = () => {
-    if (editValue.trim() && editValue.trim() !== String(value)) {
-      onChange(editValue.trim());
-    }
-    setEditing(false);
-  };
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] font-medium text-neutral-400 w-3">{label}</span>
-      {editing ? (
-        <input
-          autoFocus
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value.replace(/[^0-9-]/g, ''))}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') setEditing(false);
-          }}
-          className="flex-1 w-0 rounded border px-1.5 py-0.5 text-[11px] text-neutral-700 outline-none"
-          style={{ borderColor: 'var(--penma-primary)' }}
-        />
-      ) : (
-        <button
-          onClick={() => { setEditing(true); setEditValue(String(value)); }}
-          className="flex-1 rounded border border-transparent px-1.5 py-0.5 text-[11px] text-neutral-600 text-left hover:border-neutral-200 cursor-text"
-        >
-          {value}
-        </button>
       )}
     </div>
   );
