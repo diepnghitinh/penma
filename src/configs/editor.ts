@@ -31,3 +31,7 @@ export const editorConfig: EditorConfig = {
   resizable: true,
   movable: true,
 };
+
+export const sidebarConfig = {
+  showNativeCss: false,
+}
