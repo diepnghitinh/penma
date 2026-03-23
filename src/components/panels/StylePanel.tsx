@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight, Paintbrush, Eye, EyeOff, Minus, Plus, SeparatorHorizontal } from 'lucide-react';
+import { sidebarConfig } from '@/configs/editor';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
@@ -18,7 +19,6 @@ interface StyleSectionProps {
 }
 
 const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) => {
-  const [expanded, setExpanded] = useState(true);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
@@ -32,15 +32,10 @@ const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) 
 
   return (
     <div className="border-b border-neutral-100">
-      <button
-        className="flex h-8 w-full items-center gap-1 px-3 text-xs font-medium text-neutral-500 hover:bg-neutral-50"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      <div className="flex h-8 w-full items-center gap-1 px-3 text-xs font-medium text-neutral-500">
         {title}
-      </button>
-      {expanded && (
-        <div className="px-3 pb-2">
+      </div>
+      <div className="px-3 pb-2">
           {properties.map((prop) => {
             const value = getEffectiveStyle(node.styles, prop) || '';
             const isOverridden = prop in node.styles.overrides;
@@ -102,7 +97,6 @@ const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) 
             );
           })}
         </div>
-      )}
     </div>
   );
 };
@@ -228,14 +222,13 @@ export const StylePanel: React.FC = () => {
           <LayoutPanel node={selectedNode} />
         )}
 
-        {Object.entries(STYLE_CATEGORIES)
+        {/* Native CSS property sections — hidden when showNativeCss is false */}
+        {sidebarConfig.showNativeCss && Object.entries(STYLE_CATEGORIES)
           .filter(([category]) => {
-            // Text elements (span with text, no children) don't support spacing
             const isTextElement = selectedNode.tagName === 'span'
               && !!selectedNode.textContent
               && selectedNode.children.length === 0;
             if (isTextElement && category === 'spacing') return false;
-            // Fill panel replaces the background section
             if (category === 'background') return false;
             return true;
           })
