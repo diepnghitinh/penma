@@ -180,11 +180,61 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     delete style.flexBasis;
     delete style.alignSelf;
     // Keep width/height only for 'fixed' mode
-    if (node.sizing.horizontal !== 'fixed') delete style.width;
-    if (node.sizing.vertical !== 'fixed') delete style.height;
+    if (node.sizing.horizontal !== 'fixed') {
+      delete style.width;
+    } else if (!style.width) {
+      style.width = `${node.bounds.width}px`;
+    }
+    if (node.sizing.vertical !== 'fixed') {
+      delete style.height;
+    } else if (!style.height) {
+      style.height = `${node.bounds.height}px`;
+    }
 
     const childCSS = sizingToChildCSS(node.sizing, parentAutoLayout.direction);
     Object.assign(style, childCSS);
+
+    // Ensure fixed dimensions are enforced against parent padding compression
+    if (node.sizing.horizontal === 'fixed' && style.width) {
+      style.minWidth = style.width;
+      style.boxSizing = 'border-box';
+    }
+    if (node.sizing.vertical === 'fixed' && style.height) {
+      style.minHeight = style.height;
+      style.boxSizing = 'border-box';
+    }
+  }
+
+  // ── Sizing for non-auto-layout elements ──
+  if (!parentAutoLayout && node.sizing) {
+    if (node.sizing.horizontal === 'fixed') {
+      if (!style.width) {
+        style.width = `${node.bounds.width}px`;
+      }
+      style.minWidth = style.width;
+      style.maxWidth = style.width;
+      style.flexShrink = 0;
+      style.boxSizing = 'border-box';
+    } else if (node.sizing.horizontal === 'hug') {
+      style.width = 'auto';
+    } else if (node.sizing.horizontal === 'fill') {
+      style.width = '100%';
+      style.boxSizing = 'border-box';
+    }
+    if (node.sizing.vertical === 'fixed') {
+      if (!style.height) {
+        style.height = `${node.bounds.height}px`;
+      }
+      style.minHeight = style.height;
+      style.maxHeight = style.height;
+      style.flexShrink = 0;
+      style.boxSizing = 'border-box';
+    } else if (node.sizing.vertical === 'hug') {
+      style.height = 'auto';
+    } else if (node.sizing.vertical === 'fill') {
+      style.height = '100%';
+      style.boxSizing = 'border-box';
+    }
   }
 
   // ── Text elements: strip spacing, apply vertical alignment ──
@@ -197,11 +247,14 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     delete style.paddingRight;
     delete style.paddingBottom;
     delete style.paddingLeft;
-    delete style.margin;
-    delete style.marginTop;
-    delete style.marginRight;
-    delete style.marginBottom;
-    delete style.marginLeft;
+    // Preserve margins/minWidth/minHeight for fixed sizing
+    if (!node.sizing || (node.sizing.horizontal !== 'fixed' && node.sizing.vertical !== 'fixed')) {
+      delete style.margin;
+      delete style.marginTop;
+      delete style.marginRight;
+      delete style.marginBottom;
+      delete style.marginLeft;
+    }
 
     // Remove custom properties from inline style (not valid CSS)
     delete (style as Record<string, unknown>)['textValign'];

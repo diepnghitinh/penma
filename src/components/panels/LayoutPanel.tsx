@@ -443,13 +443,21 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const resizingPreset = getResizingPreset(hMode, vMode);
 
-  // Dimensions
+  // Dimensions: overrides → computed → bounds (consistent with renderer)
   const w = parentDoc
     ? parentDoc.viewport.width
-    : Math.round(parseFloat(node.styles.overrides['width'] || '') || node.bounds.width);
+    : Math.round(parseFloat(
+        node.styles.overrides['width']
+        || node.styles.computed['width']
+        || ''
+      ) || node.bounds.width);
   const h = parentDoc
     ? parentDoc.viewport.height
-    : Math.round(parseFloat(node.styles.overrides['height'] || '') || node.bounds.height);
+    : Math.round(parseFloat(
+        node.styles.overrides['height']
+        || node.styles.computed['height']
+        || ''
+      ) || node.bounds.height);
 
   const handleDimensionChange = useCallback(
     (prop: 'width' | 'height', value: string) => {

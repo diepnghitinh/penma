@@ -129,9 +129,10 @@ function assignIds(
   const autoLayout = detectAutoLayout(node.styles, childCount);
   const sizing = parentAutoLayout
     ? detectChildSizing(node.styles, parentAutoLayout)
-    : autoLayout
-      ? { ...DEFAULT_SIZING }
-      : undefined;
+    : {
+        horizontal: (node.styles['width'] && node.styles['width'] !== 'auto' ? 'fixed' : 'hug') as 'fixed' | 'hug' | 'fill',
+        vertical: (node.styles['height'] && node.styles['height'] !== 'auto' ? 'fixed' : 'hug') as 'fixed' | 'hug' | 'fill',
+      };
 
   return {
     id: uuid(),
