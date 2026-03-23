@@ -341,11 +341,32 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
 
   const isSelected = selectedIds.includes(node.id);
 
-  // Build safe attributes (filter out event handlers)
+  // Build safe attributes (filter out event handlers, map to React camelCase)
+  const HTML_TO_REACT: Record<string, string> = {
+    srcset: 'srcSet',
+    tabindex: 'tabIndex',
+    colspan: 'colSpan',
+    rowspan: 'rowSpan',
+    maxlength: 'maxLength',
+    minlength: 'minLength',
+    readonly: 'readOnly',
+    autocomplete: 'autoComplete',
+    autofocus: 'autoFocus',
+    crossorigin: 'crossOrigin',
+    frameborder: 'frameBorder',
+    cellpadding: 'cellPadding',
+    cellspacing: 'cellSpacing',
+    allowfullscreen: 'allowFullScreen',
+    formaction: 'formAction',
+    novalidate: 'noValidate',
+    datetime: 'dateTime',
+    for: 'htmlFor',
+  };
   const safeAttrs: Record<string, string> = {};
   for (const [key, value] of Object.entries(node.attributes)) {
     if (key.startsWith('on') || key === 'style' || key === 'class') continue;
-    safeAttrs[key] = value;
+    const reactKey = HTML_TO_REACT[key] || key;
+    safeAttrs[reactKey] = value;
   }
 
   // Special handling for img tags
