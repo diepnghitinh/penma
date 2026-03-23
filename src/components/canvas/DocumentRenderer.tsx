@@ -314,6 +314,15 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       }
     } else {
       // Container elements: fills apply as layered backgrounds
+      // Clear all background longhands first to avoid React shorthand/longhand conflict
+      delete style.backgroundColor;
+      delete style.backgroundImage;
+      delete style.backgroundSize;
+      delete style.backgroundPosition;
+      delete style.backgroundRepeat;
+      delete style.backgroundAttachment;
+      delete style.backgroundOrigin;
+      delete style.backgroundClip;
       if (visibleFills.length > 0) {
         const layers = [...visibleFills].reverse().map((f) => {
           const hex = f.color;
@@ -324,9 +333,8 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
           return `linear-gradient(rgba(${r},${g},${b},${a}), rgba(${r},${g},${b},${a}))`;
         });
         style.background = layers.join(', ');
-        delete style.backgroundColor;
       } else {
-        style.backgroundColor = 'transparent';
+        style.background = 'transparent';
       }
     }
   }

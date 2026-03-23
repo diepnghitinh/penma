@@ -57,7 +57,7 @@ export function detectAutoLayout(
   }
   const isTableVertical = display === 'table' || display === 'inline-table'
     || display === 'table-header-group' || display === 'table-row-group'
-    || display === 'table-footer-group';
+    || display === 'table-footer-group' || display === 'table-cell';
   if (isTableVertical && childCount > 0) {
     const { padding, independentPadding } = parsePadding(styles);
     return {
