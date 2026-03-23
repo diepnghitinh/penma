@@ -88,6 +88,8 @@ interface FigmaNode {
   imageUrl?: string;
   // Export settings
   exportSettings?: { format: string; suffix?: string; constraint?: { type: string; value: number } }[];
+  // Absolute positioning (out of auto-layout flow)
+  layoutPositioning?: 'ABSOLUTE' | 'AUTO';
   // Metadata
   componentProperties?: Record<string, unknown>;
 }
@@ -231,6 +233,13 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     },
     constraints: { vertical: 'TOP', horizontal: 'LEFT' },
   };
+
+  // Absolute positioning → Figma absolute positioning (out of auto-layout flow)
+  const cssPosition = styles['position'];
+  const isAbsolutePositioned = cssPosition === 'absolute' || cssPosition === 'fixed';
+  if (isAbsolutePositioned) {
+    result.layoutPositioning = 'ABSOLUTE';
+  }
 
   // Fills
   if (isImg) {
