@@ -81,19 +81,8 @@ function buildTextContainer(
   }
   if (!textStyles['text-valign']) textStyles['text-valign'] = 'middle';
 
-  // Text child sizing: detect from original styles within the container auto layout
-  const textChildSizing = detectChildSizing(styles, containerAutoLayout);
-
-  // For fixed sizing, use CSS width/height instead of actual rendered size
-  const textChildBounds = { ...node.bounds };
-  if (textChildSizing.horizontal === 'fixed') {
-    const cssWidth = parseFloat(styles['width'] || '');
-    if (cssWidth > 0) textChildBounds.width = cssWidth;
-  }
-  if (textChildSizing.vertical === 'fixed') {
-    const cssHeight = parseFloat(styles['height'] || '');
-    if (cssHeight > 0) textChildBounds.height = cssHeight;
-  }
+  // Text child spans are always "auto width" (hug content)
+  const textChildSizing = { horizontal: 'hug' as const, vertical: 'hug' as const };
 
   // Assemble nodes
   const textChild: PenmaNode = {
@@ -103,7 +92,7 @@ function buildTextContainer(
     children: [],
     textContent: node.textContent,
     styles: { computed: textStyles, overrides: {} },
-    bounds: textChildBounds,
+    bounds: node.bounds,
     visible: true,
     locked: false,
     sizing: textChildSizing,

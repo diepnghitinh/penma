@@ -301,6 +301,21 @@ async function createTextFromPenma(penmaNode: any): Promise<TextNode> {
     );
   }
 
+  // Text auto-resize based on sizing
+  const sizing = penmaNode.sizing;
+  if (sizing) {
+    if (sizing.horizontal === 'hug' && sizing.vertical === 'hug') {
+      text.textAutoResize = 'WIDTH_AND_HEIGHT';
+    } else if (sizing.horizontal === 'fixed' && (sizing.vertical === 'hug' || sizing.vertical === 'fill')) {
+      text.textAutoResize = 'HEIGHT';
+    } else if (sizing.horizontal === 'fixed' && sizing.vertical === 'fixed') {
+      text.textAutoResize = 'NONE';
+    }
+  } else {
+    // Default: text children are auto width
+    text.textAutoResize = 'WIDTH_AND_HEIGHT';
+  }
+
   text.visible = penmaNode.visible !== false;
   text.locked = penmaNode.locked === true;
 
@@ -506,6 +521,17 @@ async function createTextNode(data: any): Promise<TextNode> {
   const bbox = data.absoluteBoundingBox;
   if (bbox) {
     text.resize(Math.max(1, bbox.width), Math.max(1, bbox.height));
+  }
+
+  // Text auto-resize based on layoutSizing
+  const lsH = data.layoutSizingHorizontal;
+  const lsV = data.layoutSizingVertical;
+  if (lsH === 'HUG' && lsV === 'HUG') {
+    text.textAutoResize = 'WIDTH_AND_HEIGHT';
+  } else if (lsH === 'FIXED' && (lsV === 'HUG' || lsV === 'FILL')) {
+    text.textAutoResize = 'HEIGHT';
+  } else if (lsH === 'FIXED' && lsV === 'FIXED') {
+    text.textAutoResize = 'NONE';
   }
 
   text.visible = data.visible !== false;
