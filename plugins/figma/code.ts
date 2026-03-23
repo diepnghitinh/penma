@@ -521,16 +521,6 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
         frame.appendChild(childNode);
       }
 
-      // Position children using absoluteBoundingBox when parent has NO auto layout
-      // (auto layout parents handle positioning via flow)
-      if (!data.layoutMode && child.absoluteBoundingBox) {
-        const childBbox = child.absoluteBoundingBox;
-        try {
-          (childNode as any).x = childBbox.x;
-          (childNode as any).y = childBbox.y;
-        } catch {}
-      }
-
       // Apply child layout sizing (must be set AFTER appending to auto-layout parent)
       if (data.layoutMode) {
         const targetNode = hasMargin ? childNode.parent as SceneNode : childNode;
