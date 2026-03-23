@@ -14,7 +14,7 @@ const STYLE_PROPS = [
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
   'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  'flex-direction', 'justify-content', 'align-items', 'align-self', 'gap', 'flex-wrap', 'flex-grow', 'flex-shrink', 'flex-basis',
+  'flex-direction', 'justify-content', 'align-items', 'align-self', 'gap', 'row-gap', 'column-gap', 'flex-wrap', 'flex-grow', 'flex-shrink', 'flex-basis',
   'grid-template-columns', 'grid-template-rows',
   'font-family', 'font-size', 'font-weight', 'line-height',
   'letter-spacing', 'text-align', 'text-decoration', 'text-transform', 'color',

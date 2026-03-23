@@ -25,7 +25,12 @@ export function autoLayoutToContainerCSS(layout: AutoLayout): React.CSSPropertie
   }
 
   // Gap
-  style.gap = `${layout.gap}px`;
+  if (layout.direction === 'wrap' && layout.counterAxisGap !== undefined) {
+    style.columnGap = `${layout.gap}px`;
+    style.rowGap = `${layout.counterAxisGap}px`;
+  } else {
+    style.gap = `${layout.gap}px`;
+  }
 
   // Primary axis alignment → justify-content
   switch (layout.primaryAxisAlign) {

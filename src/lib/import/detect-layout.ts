@@ -14,7 +14,8 @@ export function detectAutoLayout(
   // CSS Grid → wrap auto layout
   const isGrid = display === 'grid' || display === 'inline-grid';
   if (isGrid) {
-    const gap = parseFloat(styles['gap'] || styles['grid-gap'] || '0') || 0;
+    const columnGap = parseFloat(styles['column-gap'] || styles['gap'] || styles['grid-gap'] || '0') || 0;
+    const rowGap = parseFloat(styles['row-gap'] || styles['gap'] || styles['grid-gap'] || '0') || 0;
     const { padding, independentPadding } = parsePadding(styles);
     const templateCols = styles['grid-template-columns'] || '';
     const justify = styles['justify-items'] || styles['justify-content'] || '';
@@ -31,7 +32,8 @@ export function detectAutoLayout(
     return {
       ...DEFAULT_AUTO_LAYOUT,
       direction: 'wrap',
-      gap,
+      gap: columnGap,
+      counterAxisGap: rowGap !== columnGap ? rowGap : undefined,
       padding,
       independentPadding,
       primaryAxisAlign: mapJustify(justify),
@@ -76,7 +78,8 @@ export function detectAutoLayout(
   }
 
   const flexDir = styles['flex-direction'] || 'row';
-  const gap = parseFloat(styles['gap'] || '0') || 0;
+  const columnGap = parseFloat(styles['column-gap'] || styles['gap'] || '0') || 0;
+  const rowGap = parseFloat(styles['row-gap'] || styles['gap'] || '0') || 0;
   const { padding, independentPadding } = parsePadding(styles);
   const wrap = styles['flex-wrap'] || '';
 
@@ -87,7 +90,8 @@ export function detectAutoLayout(
   return {
     ...DEFAULT_AUTO_LAYOUT,
     direction,
-    gap,
+    gap: columnGap,
+    counterAxisGap: direction === 'wrap' && rowGap !== columnGap ? rowGap : undefined,
     padding,
     independentPadding,
     primaryAxisAlign: mapJustify(styles['justify-content'] || ''),

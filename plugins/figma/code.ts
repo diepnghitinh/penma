@@ -189,6 +189,10 @@ async function importPenmaNode(penmaNode: any, _parent: FrameNode | null): Promi
   if (penmaNode.autoLayout) {
     const al = penmaNode.autoLayout;
     frame.layoutMode = (al.direction === 'horizontal' || al.direction === 'wrap') ? 'HORIZONTAL' : 'VERTICAL';
+    if (al.direction === 'wrap') {
+      frame.layoutWrap = 'WRAP';
+      frame.counterAxisSpacing = al.counterAxisGap ?? al.gap ?? 0;
+    }
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
     frame.itemSpacing = al.gap || 0;
@@ -465,6 +469,10 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
   // Auto layout
   if (data.layoutMode) {
     frame.layoutMode = data.layoutMode;
+    if (data.layoutWrap === 'WRAP') {
+      frame.layoutWrap = 'WRAP';
+      if (data.counterAxisSpacing !== undefined) frame.counterAxisSpacing = data.counterAxisSpacing;
+    }
     if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode as any;
     if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode as any;
     if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems as any;

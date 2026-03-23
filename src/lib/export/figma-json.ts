@@ -59,6 +59,7 @@ interface FigmaNode {
   paddingTop?: number;
   paddingBottom?: number;
   itemSpacing?: number;
+  counterAxisSpacing?: number;
   layoutWrap?: string;
   // Auto layout (child resizing)
   layoutAlign?: string;       // "STRETCH" | "INHERIT" | "MIN" | "CENTER" | "MAX"
@@ -469,6 +470,9 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     result.paddingBottom = al.padding.bottom;
     result.paddingLeft = al.padding.left;
     result.itemSpacing = al.gap;
+    if (al.direction === 'wrap') {
+      result.counterAxisSpacing = al.counterAxisGap ?? al.gap;
+    }
     if (al.clipContent) result.clipsContent = true;
     // Grid metadata
     if (al.gridColumns) result.gridColumns = al.gridColumns;

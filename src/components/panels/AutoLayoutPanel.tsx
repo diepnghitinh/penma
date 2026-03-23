@@ -311,11 +311,26 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
         </div>
 
         {/* Gap */}
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] text-neutral-400 uppercase w-14">Gap</span>
-          <NumericInput value={layout.gap} onChange={(v) => change({ gap: v })} />
-          <span className="text-[9px] text-neutral-400">px</span>
-        </div>
+        {layout.direction === 'wrap' ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-neutral-400 uppercase w-14">H Gap</span>
+              <NumericInput value={layout.gap} onChange={(v) => change({ gap: v })} />
+              <span className="text-[9px] text-neutral-400">px</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-neutral-400 uppercase w-14">V Gap</span>
+              <NumericInput value={layout.counterAxisGap ?? layout.gap} onChange={(v) => change({ counterAxisGap: v })} />
+              <span className="text-[9px] text-neutral-400">px</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-neutral-400 uppercase w-14">Gap</span>
+            <NumericInput value={layout.gap} onChange={(v) => change({ gap: v })} />
+            <span className="text-[9px] text-neutral-400">px</span>
+          </div>
+        )}
 
         {/* Alignment */}
         <AlignmentGrid

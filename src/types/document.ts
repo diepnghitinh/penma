@@ -47,6 +47,8 @@ export type SizingMode = {
 export interface AutoLayout {
   direction: LayoutDirection;
   gap: number;
+  /** Vertical gap between wrapped rows (only used when direction is 'wrap') */
+  counterAxisGap?: number;
   padding: LayoutPadding;
   primaryAxisAlign: PrimaryAxisAlign;
   counterAxisAlign: CounterAxisAlign;
