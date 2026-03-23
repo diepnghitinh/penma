@@ -198,7 +198,10 @@ export const StylePanel: React.FC = () => {
               {isInstance ? '◇' : '◆'}
             </span>
           )}
-          <span className={`text-xs font-medium ${isComponent ? 'text-pink-700' : 'text-neutral-700'}`}>
+          <span
+            className={`text-xs font-medium select-all cursor-text ${isComponent ? 'text-pink-700' : 'text-neutral-700'}`}
+            title="Click to select, then copy"
+          >
             {selectedNode.name || selectedNode.tagName}
           </span>
         </div>

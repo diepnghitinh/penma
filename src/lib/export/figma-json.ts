@@ -1,5 +1,6 @@
 import type { PenmaDocument, PenmaNode } from '@/types/document';
 import { getEffectiveStyles } from '@/lib/styles/style-resolver';
+import { debugLog } from '@/lib/utils/debug-log';
 
 /**
  * Converts a PenmaDocument (or subtree) into a Figma-compatible JSON structure.
@@ -235,11 +236,21 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     constraints: { vertical: 'TOP', horizontal: 'LEFT' },
   };
 
-  // Absolute positioning → Figma absolute positioning (out of auto-layout flow)
+  // Absolute positioning → Figma "Ignore auto layout" with X/Y relative to parent
   const cssPosition = styles['position'];
   const isAbsolutePositioned = cssPosition === 'absolute' || cssPosition === 'fixed';
   if (isAbsolutePositioned) {
     result.layoutPositioning = 'ABSOLUTE';
+
+    // X/Y from CSS left/top (relative to parent), falling back to bounds
+    const cssLeft = parseFloat(styles['left'] || '') || 0;
+    const cssTop = parseFloat(styles['top'] || '') || 0;
+    result.absoluteBoundingBox = {
+      x: cssLeft,
+      y: cssTop,
+      width: node.bounds.width,
+      height: node.bounds.height,
+    };
   }
 
   // Fills

@@ -524,17 +524,38 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
       // Apply child layout sizing (must be set AFTER appending to auto-layout parent)
       if (data.layoutMode) {
         const targetNode = hasMargin ? childNode.parent as SceneNode : childNode;
-        if (child.layoutSizingHorizontal) {
-          try { (targetNode as any).layoutSizingHorizontal = child.layoutSizingHorizontal; } catch {}
-        }
-        if (child.layoutSizingVertical) {
-          try { (targetNode as any).layoutSizingVertical = child.layoutSizingVertical; } catch {}
-        }
-        if (child.layoutGrow !== undefined) {
-          try { (targetNode as any).layoutGrow = child.layoutGrow; } catch {}
-        }
-        if (child.layoutAlign) {
-          try { (targetNode as any).layoutAlign = child.layoutAlign; } catch {}
+
+        // Absolute positioning → "Ignore auto layout" in Figma
+        if (child.layoutPositioning === 'ABSOLUTE') {
+          try {
+            (targetNode as any).layoutPositioning = 'ABSOLUTE';
+            // Set X/Y from absoluteBoundingBox (relative to parent)
+            const childBbox = child.absoluteBoundingBox;
+            if (childBbox) {
+              (targetNode as any).x = childBbox.x;
+              (targetNode as any).y = childBbox.y;
+            }
+            // Set constraints
+            if (child.constraints) {
+              (targetNode as any).constraints = {
+                horizontal: child.constraints.horizontal || 'LEFT',
+                vertical: child.constraints.vertical || 'TOP',
+              };
+            }
+          } catch {}
+        } else {
+          if (child.layoutSizingHorizontal) {
+            try { (targetNode as any).layoutSizingHorizontal = child.layoutSizingHorizontal; } catch {}
+          }
+          if (child.layoutSizingVertical) {
+            try { (targetNode as any).layoutSizingVertical = child.layoutSizingVertical; } catch {}
+          }
+          if (child.layoutGrow !== undefined) {
+            try { (targetNode as any).layoutGrow = child.layoutGrow; } catch {}
+          }
+          if (child.layoutAlign) {
+            try { (targetNode as any).layoutAlign = child.layoutAlign; } catch {}
+          }
         }
       }
     }
