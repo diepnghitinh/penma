@@ -84,6 +84,10 @@ export const createPagesSlice: StateCreator<
       } else {
         set({ pages: updatedPages });
       }
+
+      // Immediately persist deletion to database
+      const { saveProject } = get() as unknown as { saveProject: () => void };
+      if (saveProject) saveProject();
     },
 
     renamePage: (pageId, name) => {

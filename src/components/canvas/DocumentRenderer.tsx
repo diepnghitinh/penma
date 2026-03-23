@@ -361,6 +361,9 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     novalidate: 'noValidate',
     datetime: 'dateTime',
     for: 'htmlFor',
+    fetchpriority: 'fetchPriority',
+    loading: 'loading',
+    decoding: 'decoding',
   };
   const safeAttrs: Record<string, string> = {};
   for (const [key, value] of Object.entries(node.attributes)) {
@@ -428,6 +431,22 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}
+      />
+    );
+  }
+
+  // Textarea/select: use defaultValue instead of children for text content
+  if (node.tagName === 'textarea') {
+    return (
+      <textarea
+        data-penma-id={node.id}
+        style={style}
+        defaultValue={node.textContent || ''}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        readOnly
       />
     );
   }

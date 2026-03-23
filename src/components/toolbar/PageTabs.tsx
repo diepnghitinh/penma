@@ -109,7 +109,9 @@ export const PageTabs: React.FC = () => {
                 style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-fast)' }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  removePage(pageId);
+                  if (window.confirm(`Delete "${page.name}"? This cannot be undone.`)) {
+                    removePage(pageId);
+                  }
                 }}
                 title="Remove page"
               >
@@ -165,7 +167,10 @@ export const PageTabs: React.FC = () => {
                 label="Delete"
                 danger
                 onClick={() => {
-                  removePage(contextMenuId);
+                  const page = pages.find((p) => (p.id ?? (p as unknown as { _id: string })._id) === contextMenuId);
+                  if (window.confirm(`Delete "${page?.name || 'this page'}"? This cannot be undone.`)) {
+                    removePage(contextMenuId);
+                  }
                   setContextMenuId(null);
                 }}
               />
