@@ -43,6 +43,32 @@ export function detectAutoLayout(
     };
   }
 
+  // CSS table displays → auto layout
+  const isTableRow = display === 'table-row';
+  if (isTableRow && childCount > 0) {
+    const { padding, independentPadding } = parsePadding(styles);
+    return {
+      ...DEFAULT_AUTO_LAYOUT,
+      direction: 'horizontal',
+      gap: 0,
+      padding,
+      independentPadding,
+    };
+  }
+  const isTableVertical = display === 'table' || display === 'inline-table'
+    || display === 'table-header-group' || display === 'table-row-group'
+    || display === 'table-footer-group';
+  if (isTableVertical && childCount > 0) {
+    const { padding, independentPadding } = parsePadding(styles);
+    return {
+      ...DEFAULT_AUTO_LAYOUT,
+      direction: 'vertical',
+      gap: 0,
+      padding,
+      independentPadding,
+    };
+  }
+
   // Explicit flex container
   const isFlex = display === 'flex' || display === 'inline-flex';
 
