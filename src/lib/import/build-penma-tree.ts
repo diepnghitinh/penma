@@ -89,10 +89,12 @@ function buildTextContainer(
   const justifyContent = styles['justify-content'] || '';
   const textAlign = styles['text-align'] || '';
 
-  // Container alignment
+  // Container alignment — buttons default to center, others to start (left)
+  const isButton = containerTag === 'button';
+  const defaultAlign = isButton ? 'center' : 'start';
   const primaryAlign = (isFlex && justifyContent)
-    ? (HALIGN_MAP[justifyContent] || 'center')
-    : (HALIGN_MAP[textAlign] || 'center');
+    ? (HALIGN_MAP[justifyContent] || defaultAlign)
+    : (HALIGN_MAP[textAlign] || defaultAlign);
   const counterAlign = (isFlex && alignItems)
     ? (VALIGN_MAP[alignItems] || 'center')
     : 'center';
