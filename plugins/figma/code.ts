@@ -45,34 +45,20 @@ figma.ui.onmessage = async (msg: { type: string; data: any }) => {
       throw new Error('Unrecognized JSON format. Expected Penma or Figma JSON.');
     }
 
-    // Position on canvas — avoid overlapping existing content
+    // Position at current viewport center
     const GAP = 100;
-    const existingNodes = figma.currentPage.children;
-    let startX = 0;
-    let startY = 0;
+    const center = figma.viewport.center;
 
-    if (existingNodes.length > 0) {
-      // Find the bounding box of all existing content
-      let maxRight = -Infinity;
-      let minTop = Infinity;
-      for (const existing of existingNodes) {
-        const right = existing.x + existing.width;
-        if (right > maxRight) maxRight = right;
-        if (existing.y < minTop) minTop = existing.y;
-      }
-      // Place new frames to the right of existing content
-      startX = maxRight + GAP;
-      startY = minTop;
-    } else {
-      // No existing content — center on viewport
-      const viewport = figma.viewport.center;
-      startX = viewport.x;
-      startY = viewport.y;
-    }
-
-    let offsetY = startY;
+    // Calculate total height to center vertically
+    let totalH = 0;
     for (const node of rootNodes) {
-      node.x = startX;
+      totalH += node.height;
+    }
+    if (rootNodes.length > 1) totalH += GAP * (rootNodes.length - 1);
+
+    let offsetY = center.y - totalH / 2;
+    for (const node of rootNodes) {
+      node.x = center.x - node.width / 2;
       node.y = offsetY;
       offsetY += node.height + GAP;
       figma.currentPage.appendChild(node);
