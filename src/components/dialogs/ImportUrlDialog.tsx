@@ -27,6 +27,7 @@ export const ImportUrlDialog: React.FC = () => {
   const showImportDialog = useEditorStore((s) => s.showImportDialog);
   const setShowImportDialog = useEditorStore((s) => s.setShowImportDialog);
   const setDocument = useEditorStore((s) => s.setDocument);
+  const addDocuments = useEditorStore((s) => s.addDocuments);
   const setImporting = useEditorStore((s) => s.setImporting);
   const importError = useEditorStore((s) => s.importError);
   const setImportError = useEditorStore((s) => s.setImportError);
@@ -132,11 +133,12 @@ export const ImportUrlDialog: React.FC = () => {
                 if (autoComponents && doc.rootNode) {
                   autoDetectComponents(doc.rootNode);
 
-                  // Extract unique master components into a separate frame
+                  // Extract master components into Design System frame
+                  // Design System is added FIRST so masters exist before references
                   const dsFrame = buildDesignSystemFrame(doc);
                   if (dsFrame) {
-                    setDocument(doc);
-                    setDocument(dsFrame);
+                    // Add both in a single state update to ensure correct positioning
+                    addDocuments([dsFrame, doc]);
                   } else {
                     setDocument(doc);
                   }
@@ -176,7 +178,7 @@ export const ImportUrlDialog: React.FC = () => {
       setIsLoading(false);
       setImporting(false);
     }
-  }, [url, setDocument, setImporting, setImportError, setShowImportDialog, getViewport, autoComponents]);
+  }, [url, setDocument, addDocuments, setImporting, setImportError, setShowImportDialog, getViewport, autoComponents]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -393,59 +395,55 @@ function buildDesignSystemFrame(doc: PenmaDocument): PenmaDocument | null {
 
   if (masters.length === 0) return null;
 
-  // Clone each master component for the design system frame
+  // Design System gets the MAIN components (componentId).
+  // Document gets REFERENCES (componentRef) pointing to the Design System masters.
   const PADDING = 40;
   const GAP = 32;
-  let offsetY = PADDING;
 
   const componentNodes: PenmaNode[] = [];
+  let maxContentWidth = 0;
+  let totalContentHeight = 0;
 
   for (const master of masters) {
-    const cloned: PenmaNode = JSON.parse(JSON.stringify(master));
-    // Assign fresh IDs but keep componentRef pointing to original master
-    const assignIds = (n: PenmaNode) => {
+    const originalComponentId = master.componentId!;
+
+    // Clone master for the Design System frame — this becomes the MAIN component
+    const dsClone: PenmaNode = JSON.parse(JSON.stringify(master));
+    const assignFreshIds = (n: PenmaNode) => {
       n.id = uuid();
       n.componentRef = undefined;
       n.componentId = undefined;
-      for (const child of n.children) assignIds(child);
+      for (const child of n.children) assignFreshIds(child);
     };
-    assignIds(cloned);
+    assignFreshIds(dsClone);
 
-    // Set as a ref pointing to the original master
-    cloned.componentRef = master.componentId;
-    cloned.name = master.name;
-    // Normalize table-related tags to div to avoid invalid HTML nesting
-    normalizeTableTags(cloned);
+    // Mark as MAIN component (keep the same componentId for linking)
+    dsClone.componentId = originalComponentId;
+    dsClone.componentRef = undefined;
+    dsClone.name = master.name;
+    normalizeTableTags(dsClone);
 
-    // Wrap in a container div for safe rendering
-    const wrapper: PenmaNode = {
-      id: uuid(),
-      tagName: 'div',
-      attributes: {},
-      children: [cloned],
-      styles: {
-        computed: {
-          display: 'block',
-          position: 'relative',
-          left: `${PADDING}px`,
-          top: `${offsetY}px`,
-        },
-        overrides: {},
-      },
-      bounds: { x: PADDING, y: offsetY, width: cloned.bounds.width, height: cloned.bounds.height },
-      visible: true,
-      locked: false,
-      name: cloned.name,
-    };
+    // Turn the ORIGINAL node in the Document into a REFERENCE
+    master.componentId = undefined;
+    master.componentRef = originalComponentId;
 
-    offsetY += cloned.bounds.height + GAP;
-    componentNodes.push(wrapper);
+    const cw = dsClone.bounds.width;
+    const ch = dsClone.bounds.height;
+    if (cw > maxContentWidth) maxContentWidth = cw;
+    totalContentHeight += ch;
+
+    componentNodes.push(dsClone);
   }
 
-  const frameHeight = offsetY + PADDING;
-  const frameWidth = 400;
+  // Add gaps between components
+  if (componentNodes.length > 1) {
+    totalContentHeight += GAP * (componentNodes.length - 1);
+  }
 
-  // Build the frame document
+  const frameWidth = Math.max(400, maxContentWidth + PADDING * 2);
+  const frameHeight = totalContentHeight + PADDING * 2;
+
+  // Build the frame document — uses flex column layout with gap for proper flow
   const rootNode: PenmaNode = {
     id: uuid(),
     tagName: 'div',
@@ -453,11 +451,15 @@ function buildDesignSystemFrame(doc: PenmaDocument): PenmaDocument | null {
     children: componentNodes,
     styles: {
       computed: {
-        display: 'block',
+        display: 'flex',
+        'flex-direction': 'column',
+        gap: `${GAP}px`,
         width: `${frameWidth}px`,
-        height: `${frameHeight}px`,
+        'min-height': `${frameHeight}px`,
         'background-color': '#ffffff',
         position: 'relative',
+        padding: `${PADDING}px`,
+        'box-sizing': 'border-box',
       },
       overrides: {},
     },
@@ -466,9 +468,6 @@ function buildDesignSystemFrame(doc: PenmaDocument): PenmaDocument | null {
     locked: false,
     name: 'Design System',
   };
-
-  let hostname = doc.sourceUrl;
-  try { hostname = new URL(doc.sourceUrl).hostname; } catch {}
 
   return {
     id: uuid(),

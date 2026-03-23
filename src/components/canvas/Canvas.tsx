@@ -21,6 +21,7 @@ export const Canvas: React.FC = () => {
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
   const removeDocument = useEditorStore((s) => s.removeDocument);
   const updateDocumentViewport = useEditorStore((s) => s.updateDocumentViewport);
+  const updateDocumentPosition = useEditorStore((s) => s.updateDocumentPosition);
   const pushHistory = useEditorStore((s) => s.pushHistory);
   const activeTool = useEditorStore((s) => s.activeTool);
   const isPanning = useEditorStore((s) => s.isPanning);
@@ -30,6 +31,29 @@ export const Canvas: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
   const lastPanPos = useRef({ x: 0, y: 0 });
+
+  // Document frame drag state
+  const dragDocRef = useRef<{ docId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleFrameDragStart = useCallback((e: React.PointerEvent, docId: string, canvasX: number, canvasY: number) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pushHistory('Move frame');
+    dragDocRef.current = { docId, startX: e.clientX, startY: e.clientY, origX: canvasX, origY: canvasY };
+  }, [pushHistory]);
+
+  const handleFrameDragMove = useCallback((e: React.PointerEvent) => {
+    const drag = dragDocRef.current;
+    if (!drag) return;
+    const zoom = useEditorStore.getState().camera.zoom;
+    const dx = (e.clientX - drag.startX) / zoom;
+    const dy = (e.clientY - drag.startY) / zoom;
+    updateDocumentPosition(drag.docId, Math.round(drag.origX + dx), Math.round(drag.origY + dy));
+  }, [updateDocumentPosition]);
+
+  const handleFrameDragEnd = useCallback(() => {
+    dragDocRef.current = null;
+  }, []);
 
   // Wheel/touchpad scroll → pan & zoom
   // Touchpad two-finger scroll → pan (deltaX/deltaY)
@@ -151,17 +175,20 @@ export const Canvas: React.FC = () => {
               style={{ left: doc.canvasX, top: doc.canvasY }}
               onPointerDown={() => setActiveDocument(doc.id)}
             >
-              {/* Frame label */}
+              {/* Frame label — draggable to move document */}
               <div
-                className="group/label absolute -top-6 left-0 flex items-center gap-1.5 whitespace-nowrap text-[11px] select-none"
+                className="group/label absolute -top-6 left-0 flex items-center gap-1.5 whitespace-nowrap text-[11px] select-none cursor-grab active:cursor-grabbing"
+                onPointerDown={(e) => handleFrameDragStart(e, doc.id, doc.canvasX, doc.canvasY)}
+                onPointerMove={handleFrameDragMove}
+                onPointerUp={handleFrameDragEnd}
                 style={{
                   color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
                   fontFamily: 'var(--font-heading)',
                   fontWeight: 600,
                 }}
               >
-                <span className="truncate max-w-[200px]">
-                  {new URL(doc.sourceUrl).hostname}
+                <span className="truncate max-w-[400px]">
+                  {doc.sourceUrl}
                 </span>
                 <ViewportSizeLabel
                   docId={doc.id}
@@ -371,24 +398,19 @@ const FrameContainer: React.FC<{
     let rafId = 0;
 
     const measure = () => {
-      const contentW = content.scrollWidth;
       const contentH = content.scrollHeight;
       const curW = doc.viewport.width;
       const curH = doc.viewport.height;
 
-      // Only resize if content overflows AND we haven't already applied this size
-      const needW = contentW > curW;
-      const needH = contentH > curH;
-      if (!needW && !needH) return;
-
-      const newW = needW ? contentW : curW;
-      const newH = needH ? contentH : curH;
+      // Only auto-resize height — width stays fixed to the user-chosen viewport
+      // to prevent horizontal overlap with adjacent document frames
+      if (contentH <= curH) return;
 
       // Guard: skip if we already applied this exact size
-      if (newW === lastAppliedRef.current.w && newH === lastAppliedRef.current.h) return;
+      if (curW === lastAppliedRef.current.w && contentH === lastAppliedRef.current.h) return;
 
-      lastAppliedRef.current = { w: newW, h: newH };
-      onAutoResize(doc.id, { width: newW, height: newH });
+      lastAppliedRef.current = { w: curW, h: contentH };
+      onAutoResize(doc.id, { width: curW, height: contentH });
     };
 
     const observer = new ResizeObserver(() => {

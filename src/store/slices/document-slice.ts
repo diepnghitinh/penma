@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import { produce } from 'immer';
 import { v4 as uuid } from 'uuid';
-import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode, PenmaFill } from '@/types/document';
+import type { PenmaDocument, PenmaNode, AutoLayout, PenmaFill } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
 import { updateNodeById, findNodeById, findParentNode, flattenTree } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
@@ -14,6 +14,8 @@ export interface DocumentSlice {
   /** Backward-compat: returns the active document */
   document: PenmaDocument | null;
   addDocument: (doc: PenmaDocument) => void;
+  /** Add multiple documents at once, correctly positioned without overlap */
+  addDocuments: (docs: PenmaDocument[]) => void;
   removeDocument: (docId: string) => void;
   setActiveDocument: (docId: string) => void;
   /** Legacy — adds or replaces the single doc */
@@ -35,6 +37,8 @@ export interface DocumentSlice {
   setUniformPadding: (nodeId: string, value: number) => void;
   updateSizing: (nodeId: string, axis: 'horizontal' | 'vertical', mode: 'fixed' | 'hug' | 'fill') => void;
   updateNodeFills: (nodeId: string, fills: PenmaFill[]) => void;
+  /** Move a document frame on the canvas */
+  updateDocumentPosition: (docId: string, canvasX: number, canvasY: number) => void;
   /** Resize a frame's viewport */
   updateDocumentViewport: (docId: string, viewport: { width: number; height: number }) => void;
   /** Mark a node as a master component */
@@ -151,6 +155,57 @@ function isInstanceNode(docs: PenmaDocument[], nodeId: string): boolean {
 
 const FRAME_GAP = 80; // px between frames on canvas
 
+/** Get the effective size of a document frame */
+function getDocSize(doc: PenmaDocument): { width: number; height: number } {
+  return {
+    // Width uses viewport only — rootNode.bounds.width from Puppeteer may
+    // exceed the viewport (e.g. body wider than the chosen screen size),
+    // but the frame clips to viewport width, so layout must use that.
+    width: doc.viewport.width,
+    height: Math.max(doc.viewport.height, doc.rootNode.bounds.height),
+  };
+}
+
+/**
+ * Arrange documents so they don't overlap.
+ * Places each new document to the right of all existing + previously placed documents.
+ * All documents top-aligned at the same Y.
+ */
+function layoutDocuments(
+  existing: PenmaDocument[],
+  incoming: PenmaDocument[],
+): PenmaDocument[] {
+  if (incoming.length === 0) return [];
+
+  // Find the rightmost edge of all existing documents
+  let nextX = 0;
+  const startY = 0;
+
+  for (const d of existing) {
+    const right = d.canvasX + getDocSize(d).width;
+    if (right > nextX) nextX = right;
+  }
+
+  // Add gap if there are existing documents
+  if (existing.length > 0) {
+    nextX += FRAME_GAP;
+  }
+
+  // Place each incoming document sequentially to the right
+  const positioned: PenmaDocument[] = [];
+  for (const doc of incoming) {
+    const size = getDocSize(doc);
+    positioned.push({
+      ...doc,
+      canvasX: nextX,
+      canvasY: startY,
+    });
+    nextX += size.width + FRAME_GAP;
+  }
+
+  return positioned;
+}
+
 export const createDocumentSlice: StateCreator<
   EditorState,
   [],
@@ -169,20 +224,22 @@ export const createDocumentSlice: StateCreator<
 
   addDocument: (doc) =>
     set((state) => {
-      // Position new frame to the right of existing frames
-      let maxRight = 0;
-      for (const d of state.documents) {
-        const right = d.canvasX + d.viewport.width;
-        if (right > maxRight) maxRight = right;
-      }
-      const positioned = {
-        ...doc,
-        canvasX: state.documents.length > 0 ? maxRight + FRAME_GAP : 0,
-        canvasY: 0,
-      };
+      const [positioned] = layoutDocuments(state.documents, [doc]);
       return {
         documents: [...state.documents, positioned],
         activeDocumentId: doc.id,
+        isImporting: false,
+        importError: null,
+      };
+    }),
+
+  addDocuments: (docs) =>
+    set((state) => {
+      const positioned = layoutDocuments(state.documents, docs);
+      const lastDoc = positioned[positioned.length - 1];
+      return {
+        documents: [...state.documents, ...positioned],
+        activeDocumentId: lastDoc?.id ?? state.activeDocumentId,
         isImporting: false,
         importError: null,
       };
@@ -204,16 +261,7 @@ export const createDocumentSlice: StateCreator<
 
   setDocument: (doc) =>
     set((state) => {
-      const positioned = { ...doc, canvasX: doc.canvasX ?? 0, canvasY: doc.canvasY ?? 0 };
-      // Position to the right of existing frames
-      let maxRight = 0;
-      for (const d of state.documents) {
-        const right = d.canvasX + d.viewport.width;
-        if (right > maxRight) maxRight = right;
-      }
-      if (state.documents.length > 0) {
-        positioned.canvasX = maxRight + FRAME_GAP;
-      }
+      const [positioned] = layoutDocuments(state.documents, [doc]);
       return {
         documents: [...state.documents, positioned],
         activeDocumentId: doc.id,
@@ -401,6 +449,13 @@ export const createDocumentSlice: StateCreator<
         }),
       };
     }),
+
+  updateDocumentPosition: (docId, canvasX, canvasY) =>
+    set((state) => ({
+      documents: state.documents.map((doc) =>
+        doc.id === docId ? { ...doc, canvasX, canvasY } : doc
+      ),
+    })),
 
   updateDocumentViewport: (docId, viewport) =>
     set((state) => ({
