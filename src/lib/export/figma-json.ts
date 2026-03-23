@@ -272,8 +272,36 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       { format: 'SVG', suffix: '' },
       { format: 'PNG', suffix: '@2x', constraint: { type: 'SCALE', value: 2 } },
     ];
+  } else if (node.fills && node.fills.length > 0) {
+    // Structured fills (Figma-style multi-fill)
+    result.fills = node.fills.map((f) => {
+      const hex = f.color;
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      return {
+        type: 'SOLID' as const,
+        visible: f.visible,
+        color: { r, g, b, a: 1 },
+        opacity: f.opacity / 100,
+      };
+    });
+
+    // Also check for background-image
+    const bgImage = styles['background-image'];
+    if (bgImage && bgImage !== 'none' && bgImage.includes('url(')) {
+      const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+      if (urlMatch) {
+        const bgUrl = resolveProxyUrl(urlMatch[1]);
+        result.fills.push({ type: 'IMAGE', visible: true, scaleMode: 'FILL', imageRef: node.id, imageUrl: bgUrl });
+        result.imageUrl = bgUrl;
+        result.exportSettings = [
+          { format: 'PNG', suffix: '', constraint: { type: 'SCALE', value: 2 } },
+        ];
+      }
+    }
   } else {
-    // Background color fill
+    // Fallback: background color from CSS
     const bgColor = parseColor(styles['background-color']);
     if (bgColor) {
       result.fills = [{ type: 'SOLID', visible: true, color: bgColor }];
@@ -397,10 +425,20 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
       textDecoration: mapTextDecoration(styles['text-decoration']),
     };
 
-    // Text color as fill
-    const textColor = parseColor(styles['color']);
-    if (textColor) {
-      result.fills = [{ type: 'SOLID', visible: true, color: textColor }];
+    // Text color: use node.fills if available, otherwise fallback to CSS color
+    if (node.fills && node.fills.length > 0) {
+      result.fills = node.fills.map((f) => {
+        const hex = f.color;
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+        return { type: 'SOLID' as const, visible: f.visible, color: { r, g, b, a: 1 }, opacity: f.opacity / 100 };
+      });
+    } else {
+      const textColor = parseColor(styles['color']);
+      if (textColor) {
+        result.fills = [{ type: 'SOLID', visible: true, color: textColor }];
+      }
     }
   }
 
@@ -571,6 +609,7 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
 function parseColor(raw: string | undefined): FigmaColor | null {
   if (!raw || raw === 'transparent' || raw === 'initial' || raw === 'none') return null;
 
+  // rgb(r, g, b) / rgba(r, g, b, a)
   const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
   if (rgbMatch) {
     const a = rgbMatch[4] !== undefined ? parseFloat(rgbMatch[4]) : 1;
@@ -583,6 +622,20 @@ function parseColor(raw: string | undefined): FigmaColor | null {
     };
   }
 
+  // color(srgb r g b) / color(srgb r g b / a) — modern Chrome format
+  const srgbMatch = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
+  if (srgbMatch) {
+    const a = srgbMatch[4] !== undefined ? parseFloat(srgbMatch[4]) : 1;
+    if (a < 0.01) return null;
+    return {
+      r: parseFloat(srgbMatch[1]),
+      g: parseFloat(srgbMatch[2]),
+      b: parseFloat(srgbMatch[3]),
+      a,
+    };
+  }
+
+  // #hex
   if (raw.startsWith('#')) {
     const hex = raw.slice(1);
     if (hex.length >= 6) {

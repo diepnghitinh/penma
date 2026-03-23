@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import type { PenmaNode, PenmaDocument, AutoLayout } from '@/types/document';
+import type { PenmaNode, PenmaDocument, AutoLayout, PenmaFill } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
 import { HALIGN_MAP, VALIGN_MAP, VALIGN_TO_TEXT, TEXT_STYLE_KEYS, parsePadding } from './css-mapping';
 import { detectAutoLayout, detectChildSizing } from './detect-layout';
@@ -15,6 +15,58 @@ export interface SerializedNode {
   styles: Record<string, string>;
   bounds: { x: number; y: number; width: number; height: number };
   name: string;
+}
+
+/** Parse any CSS color value into hex + opacity. Handles:
+ *  - rgb(r, g, b) / rgba(r, g, b, a)
+ *  - color(srgb r g b) / color(srgb r g b / a)
+ *  - #hex
+ */
+function parseCssColor(raw: string | undefined): { hex: string; opacity: number } | null {
+  if (!raw || raw === 'transparent' || raw === 'initial' || raw === 'none') return null;
+
+  // rgb(r, g, b) / rgba(r, g, b, a)
+  const rgbaMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (rgbaMatch) {
+    const r = parseInt(rgbaMatch[1]);
+    const g = parseInt(rgbaMatch[2]);
+    const b = parseInt(rgbaMatch[3]);
+    const a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+    if (a < 0.01) return null;
+    const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    return { hex, opacity: Math.round(a * 100) };
+  }
+
+  // color(srgb r g b) / color(srgb r g b / a) — modern Chrome computed style format
+  const srgbMatch = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
+  if (srgbMatch) {
+    const r = Math.round(parseFloat(srgbMatch[1]) * 255);
+    const g = Math.round(parseFloat(srgbMatch[2]) * 255);
+    const b = Math.round(parseFloat(srgbMatch[3]) * 255);
+    const a = srgbMatch[4] !== undefined ? parseFloat(srgbMatch[4]) : 1;
+    if (a < 0.01) return null;
+    const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    return { hex, opacity: Math.round(a * 100) };
+  }
+
+  // #hex
+  if (raw.startsWith('#') && raw.length >= 7) {
+    return { hex: raw.slice(0, 7), opacity: 100 };
+  }
+
+  return null;
+}
+
+function parseBgToFills(styles: Record<string, string>): PenmaFill[] | undefined {
+  const parsed = parseCssColor(styles['background-color']);
+  if (!parsed) return undefined;
+  return [{ id: uuid(), color: parsed.hex, opacity: parsed.opacity, visible: true }];
+}
+
+function parseColorToFills(raw: string | undefined): PenmaFill[] | undefined {
+  const parsed = parseCssColor(raw);
+  if (!parsed) return undefined;
+  return [{ id: uuid(), color: parsed.hex, opacity: parsed.opacity, visible: true }];
 }
 
 // ── Tags that keep their original tag as the container ──────
@@ -84,6 +136,9 @@ function buildTextContainer(
   // Text child spans are always "auto width" (hug content)
   const textChildSizing = { horizontal: 'hug' as const, vertical: 'hug' as const };
 
+  // Text child fills: use CSS `color` (text color) → fills
+  const textChildFills = parseColorToFills(textStyles['color']);
+
   // Assemble nodes
   const textChild: PenmaNode = {
     id: uuid(),
@@ -96,6 +151,7 @@ function buildTextContainer(
     visible: true,
     locked: false,
     sizing: textChildSizing,
+    fills: textChildFills,
   };
 
   return {
@@ -110,6 +166,7 @@ function buildTextContainer(
     name: node.name,
     autoLayout: containerAutoLayout,
     sizing: containerSizing,
+    fills: parseBgToFills(styles),
   };
 }
 
@@ -152,6 +209,7 @@ function assignIds(
     name: node.name,
     autoLayout,
     sizing,
+    fills: parseBgToFills(node.styles),
   };
 }
 

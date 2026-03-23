@@ -25,6 +25,8 @@ export interface PenmaNode {
   name?: string;
   autoLayout?: AutoLayout;
   sizing?: SizingMode;
+  /** Layered fills (Figma-style, bottom-to-top order) */
+  fills?: PenmaFill[];
   /** Unique ID identifying this node as a master component */
   componentId?: string;
   /** Points to a master component's componentId — this node is an instance (ref) */
@@ -82,6 +84,13 @@ export const DEFAULT_SIZING: SizingMode = {
   horizontal: 'hug',
   vertical: 'hug',
 };
+
+export interface PenmaFill {
+  id: string;
+  color: string;    // hex color e.g. '#C96A6A'
+  opacity: number;  // 0–100
+  visible: boolean;
+}
 
 export interface PenmaStyles {
   computed: Record<string, string>;

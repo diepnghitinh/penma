@@ -164,12 +164,21 @@ export async function scrapePage(opts: ScrapeOptions): Promise<SerializedNode> {
                   const text = childNode.textContent?.trim();
                   if (text) {
                     nodeCount++;
+                    // Inherit typography + color styles from parent element
+                    const inheritedStyles: Record<string, string> = {};
+                    const INHERIT_PROPS = [
+                      'font-family', 'font-size', 'font-weight', 'line-height',
+                      'letter-spacing', 'text-align', 'text-decoration', 'text-transform', 'color',
+                    ];
+                    for (const prop of INHERIT_PROPS) {
+                      if (styles[prop]) inheritedStyles[prop] = styles[prop];
+                    }
                     children.push({
                       tagName: 'span',
                       attributes: {},
                       children: [],
                       textContent: text,
-                      styles: {},
+                      styles: inheritedStyles,
                       bounds: { x: 0, y: 0, width: 0, height: 0 },
                       name: `"${text.slice(0, 20)}"`,
                     });

@@ -276,6 +276,41 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     style.justifyContent = halignMap[halign] || 'start';
   }
 
+  // ── Fills: apply as background (div) or color (span text) ──
+  if (node.fills && node.fills.length > 0) {
+    const visibleFills = node.fills.filter((f) => f.visible);
+    if (isTextElement) {
+      // Text elements: fills apply as text color (topmost visible fill wins)
+      if (visibleFills.length > 0) {
+        const top = visibleFills[visibleFills.length - 1];
+        const hex = top.color;
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        const a = top.opacity / 100;
+        style.color = `rgba(${r},${g},${b},${a})`;
+      } else {
+        style.color = 'transparent';
+      }
+    } else {
+      // Container elements: fills apply as layered backgrounds
+      if (visibleFills.length > 0) {
+        const layers = [...visibleFills].reverse().map((f) => {
+          const hex = f.color;
+          const r = parseInt(hex.slice(1, 3), 16);
+          const g = parseInt(hex.slice(3, 5), 16);
+          const b = parseInt(hex.slice(5, 7), 16);
+          const a = f.opacity / 100;
+          return `linear-gradient(rgba(${r},${g},${b},${a}), rgba(${r},${g},${b},${a}))`;
+        });
+        style.background = layers.join(', ');
+        delete style.backgroundColor;
+      } else {
+        style.backgroundColor = 'transparent';
+      }
+    }
+  }
+
   const isSelected = selectedIds.includes(node.id);
 
   // Build safe attributes (filter out event handlers)

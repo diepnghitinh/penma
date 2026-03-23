@@ -42,10 +42,10 @@ export const STYLE_CATEGORIES = {
   ],
   typography: [
     'font-family', 'font-size', 'font-weight', 'line-height',
-    'letter-spacing', 'text-align', 'text-valign', 'text-decoration', 'color',
+    'letter-spacing', 'text-align', 'text-valign', 'text-decoration',
   ],
   background: [
-    'background-color', 'background-image', 'background-size',
+    'background-image', 'background-size',
     'background-position', 'background-repeat',
   ],
   border: [

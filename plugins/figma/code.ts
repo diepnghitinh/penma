@@ -676,6 +676,7 @@ function createRectNode(data: any): RectangleNode {
 function parseRgba(raw: string | undefined): { r: number; g: number; b: number; a: number } | null {
   if (!raw || raw === 'transparent' || raw === 'initial' || raw === 'none') return null;
 
+  // rgb(r, g, b) / rgba(r, g, b, a)
   const match = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
   if (match) {
     const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
@@ -684,6 +685,19 @@ function parseRgba(raw: string | undefined): { r: number; g: number; b: number; 
       r: parseInt(match[1]) / 255,
       g: parseInt(match[2]) / 255,
       b: parseInt(match[3]) / 255,
+      a,
+    };
+  }
+
+  // color(srgb r g b) / color(srgb r g b / a)
+  const srgbMatch = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
+  if (srgbMatch) {
+    const a = srgbMatch[4] !== undefined ? parseFloat(srgbMatch[4]) : 1;
+    if (a < 0.01) return null;
+    return {
+      r: parseFloat(srgbMatch[1]),
+      g: parseFloat(srgbMatch[2]),
+      b: parseFloat(srgbMatch[3]),
       a,
     };
   }

@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import { produce } from 'immer';
 import { v4 as uuid } from 'uuid';
-import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode } from '@/types/document';
+import type { PenmaDocument, PenmaNode, AutoLayout, SizingMode, PenmaFill } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
 import { updateNodeById, findNodeById, findParentNode, flattenTree } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
@@ -34,6 +34,7 @@ export interface DocumentSlice {
   updateAutoLayoutPadding: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', value: number) => void;
   setUniformPadding: (nodeId: string, value: number) => void;
   updateSizing: (nodeId: string, axis: 'horizontal' | 'vertical', mode: 'fixed' | 'hug' | 'fill') => void;
+  updateNodeFills: (nodeId: string, fills: PenmaFill[]) => void;
   /** Resize a frame's viewport */
   updateDocumentViewport: (docId: string, viewport: { width: number; height: number }) => void;
   /** Mark a node as a master component */
@@ -128,6 +129,7 @@ function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
             ? { ...master.autoLayout, padding: { ...master.autoLayout.padding } }
             : undefined;
           instance.sizing = master.sizing ? { ...master.sizing } : undefined;
+          instance.fills = master.fills ? master.fills.map(f => ({ ...f })) : undefined;
           instance.name = master.name;
           // Deep-clone children from master with fresh IDs
           instance.children = master.children.map((c) => cloneNodeWithNewIds(c));
@@ -388,6 +390,18 @@ export const createDocumentSlice: StateCreator<
       }),
     })),
 
+  updateNodeFills: (nodeId, fills) =>
+    set((state) => {
+      if (isInstanceNode(state.documents, nodeId)) return state;
+      return {
+        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+          updateNodeById(draft.rootNode, nodeId, (node) => {
+            node.fills = fills;
+          });
+        }),
+      };
+    }),
+
   updateDocumentViewport: (docId, viewport) =>
     set((state) => ({
       documents: state.documents.map((doc) => {
@@ -503,5 +517,6 @@ function cloneNodeWithNewIds(node: PenmaNode): PenmaNode {
     bounds: { ...node.bounds },
     autoLayout: node.autoLayout ? { ...node.autoLayout, padding: { ...node.autoLayout.padding } } : undefined,
     sizing: node.sizing ? { ...node.sizing } : undefined,
+    fills: node.fills ? node.fills.map(f => ({ ...f })) : undefined,
   };
 }

@@ -9,7 +9,7 @@ import { STYLE_CATEGORIES } from '@/lib/styles/style-resolver';
 import { AutoLayoutPanel } from './AutoLayoutPanel';
 import { LayoutPanel } from './LayoutPanel';
 import { ExportPanel } from './ExportPanel';
-import type { PenmaNode } from '@/types/document';
+import type { PenmaNode, PenmaFill } from '@/types/document';
 
 interface StyleSectionProps {
   title: string;
@@ -109,11 +109,19 @@ const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) 
 
 function parseColorToHex(color: string): string {
   if (color.startsWith('#')) return color.slice(0, 7);
-  const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (match) {
-    const r = parseInt(match[1]).toString(16).padStart(2, '0');
-    const g = parseInt(match[2]).toString(16).padStart(2, '0');
-    const b = parseInt(match[3]).toString(16).padStart(2, '0');
+  const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbaMatch) {
+    const r = parseInt(rgbaMatch[1]).toString(16).padStart(2, '0');
+    const g = parseInt(rgbaMatch[2]).toString(16).padStart(2, '0');
+    const b = parseInt(rgbaMatch[3]).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+  }
+  // color(srgb r g b)
+  const srgbMatch = color.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+  if (srgbMatch) {
+    const r = Math.round(parseFloat(srgbMatch[1]) * 255).toString(16).padStart(2, '0');
+    const g = Math.round(parseFloat(srgbMatch[2]) * 255).toString(16).padStart(2, '0');
+    const b = Math.round(parseFloat(srgbMatch[3]) * 255).toString(16).padStart(2, '0');
     return `#${r}${g}${b}`;
   }
   return '#000000';
@@ -225,6 +233,8 @@ export const StylePanel: React.FC = () => {
               && !!selectedNode.textContent
               && selectedNode.children.length === 0;
             if (isTextElement && category === 'spacing') return false;
+            // Fill panel replaces the background section
+            if (category === 'background') return false;
             return true;
           })
           .map(([category, properties]) => (
@@ -235,6 +245,9 @@ export const StylePanel: React.FC = () => {
             node={selectedNode}
           />
         ))}
+
+        {/* Fill (Figma-style, replaces background) */}
+        {!isInstance && <FillPanel node={selectedNode} />}
 
         {/* Stroke */}
         {!isInstance && <StrokePanel node={selectedNode} />}
@@ -251,6 +264,188 @@ export const StylePanel: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ── Fill panel (Figma-style, multiple fills with opacity) ───
+
+function hexToRgba(hex: string, opacity: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
+}
+
+/** Build a checkerboard + color swatch for the fill preview */
+function fillSwatchStyle(hex: string, opacity: number): React.CSSProperties {
+  if (opacity >= 100) return { backgroundColor: hex };
+  return {
+    backgroundImage: `linear-gradient(${hexToRgba(hex, opacity)}, ${hexToRgba(hex, opacity)}), repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%)`,
+    backgroundSize: '100% 100%, 6px 6px',
+  };
+}
+
+/** Parse any CSS color string into a PenmaFill array.
+ *  Handles rgb(), rgba(), color(srgb ...), and #hex */
+function parseCssColorToFills(raw: string | undefined): PenmaFill[] {
+  if (!raw || raw === 'transparent' || raw === 'initial' || raw === 'none') return [];
+
+  // rgb(r, g, b) / rgba(r, g, b, a)
+  const rgbaMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (rgbaMatch) {
+    const r = parseInt(rgbaMatch[1]);
+    const g = parseInt(rgbaMatch[2]);
+    const b = parseInt(rgbaMatch[3]);
+    const a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+    if (a < 0.01) return [];
+    const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    return [{ id: crypto.randomUUID(), color: hex, opacity: Math.round(a * 100), visible: true }];
+  }
+
+  // color(srgb r g b) / color(srgb r g b / a) — modern Chrome computed style format
+  const srgbMatch = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
+  if (srgbMatch) {
+    const r = Math.round(parseFloat(srgbMatch[1]) * 255);
+    const g = Math.round(parseFloat(srgbMatch[2]) * 255);
+    const b = Math.round(parseFloat(srgbMatch[3]) * 255);
+    const a = srgbMatch[4] !== undefined ? parseFloat(srgbMatch[4]) : 1;
+    if (a < 0.01) return [];
+    const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    return [{ id: crypto.randomUUID(), color: hex, opacity: Math.round(a * 100), visible: true }];
+  }
+
+  // #hex
+  if (raw.startsWith('#') && raw.length >= 7) {
+    return [{ id: crypto.randomUUID(), color: raw.slice(0, 7), opacity: 100, visible: true }];
+  }
+
+  return [];
+}
+
+/** Migrate fills from CSS: div → background-color, span text → color */
+function migrateFillsFromCss(node: PenmaNode): PenmaFill[] {
+  const styles = { ...node.styles.computed, ...node.styles.overrides };
+  const isTextElement = node.tagName === 'span'
+    && !!node.textContent
+    && node.children.length === 0;
+
+  if (isTextElement) {
+    // Try color first, then fall back to background-color
+    const fromColor = parseCssColorToFills(styles['color']);
+    if (fromColor.length > 0) return fromColor;
+    return parseCssColorToFills(styles['background-color']);
+  }
+  return parseCssColorToFills(styles['background-color']);
+}
+
+const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeFills = useEditorStore((s) => s.updateNodeFills);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+  const [expanded, setExpanded] = useState(true);
+
+  // Migrate from CSS if fills not yet set
+  const fills: PenmaFill[] = node.fills ?? migrateFillsFromCss(node);
+
+  const update = useCallback((newFills: PenmaFill[]) => {
+    pushHistory('Change fill');
+    updateNodeFills(node.id, newFills);
+  }, [node.id, updateNodeFills, pushHistory]);
+
+  const addFill = useCallback(() => {
+    update([...fills, { id: crypto.randomUUID(), color: '#000000', opacity: 100, visible: true }]);
+  }, [fills, update]);
+
+  const removeFill = useCallback((id: string) => {
+    update(fills.filter((f) => f.id !== id));
+  }, [fills, update]);
+
+  const updateFill = useCallback((id: string, patch: Partial<PenmaFill>) => {
+    update(fills.map((f) => f.id === id ? { ...f, ...patch } : f));
+  }, [fills, update]);
+
+  return (
+    <div className="border-b border-neutral-100">
+      {/* Header */}
+      <div className="flex h-8 items-center justify-between px-3">
+        <button
+          className="flex items-center gap-1 text-xs font-medium text-neutral-500 cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Fill
+        </button>
+        <button
+          onClick={addFill}
+          className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
+          style={{ color: 'var(--penma-text-muted)' }}
+          title="Add fill"
+        >
+          <Plus size={12} />
+        </button>
+      </div>
+
+      {expanded && fills.length > 0 && (
+        <div className="px-3 pb-2.5 flex flex-col gap-1.5">
+          {/* Render bottom-to-top (last fill = topmost layer, shown first) */}
+          {[...fills].reverse().map((fill) => (
+            <div key={fill.id} className="flex items-center gap-2">
+              {/* Color swatch */}
+              <label className="relative h-6 w-6 shrink-0 cursor-pointer rounded border border-neutral-200 overflow-hidden">
+                <div className="absolute inset-0" style={fillSwatchStyle(fill.color, fill.opacity)} />
+                <input
+                  type="color"
+                  value={fill.color}
+                  onChange={(e) => updateFill(fill.id, { color: e.target.value })}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </label>
+              {/* Hex */}
+              <input
+                type="text"
+                value={fill.color.replace('#', '').toUpperCase()}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+                  if (v.length === 6) updateFill(fill.id, { color: `#${v}` });
+                }}
+                className="w-[72px] rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 font-mono focus:border-blue-300 focus:outline-none"
+              />
+              {/* Opacity */}
+              <div className="flex items-center gap-0.5">
+                <input
+                  type="number"
+                  value={fill.opacity}
+                  onChange={(e) => updateFill(fill.id, { opacity: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                  min={0}
+                  max={100}
+                  className="w-10 rounded border border-neutral-200 px-1.5 py-1 text-[11px] text-neutral-700 text-right focus:border-blue-300 focus:outline-none
+                    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <span className="text-[10px] text-neutral-400">%</span>
+              </div>
+              {/* Visibility toggle */}
+              <button
+                onClick={() => updateFill(fill.id, { visible: !fill.visible })}
+                className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer shrink-0"
+                style={{ color: 'var(--penma-text-muted)' }}
+                title={fill.visible ? 'Hide fill' : 'Show fill'}
+              >
+                {fill.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+              </button>
+              {/* Remove */}
+              <button
+                onClick={() => removeFill(fill.id)}
+                className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer shrink-0"
+                style={{ color: 'var(--penma-text-muted)' }}
+                title="Remove fill"
+              >
+                <Minus size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
