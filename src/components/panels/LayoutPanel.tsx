@@ -1,37 +1,88 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
-import type { PenmaNode } from '@/types/document';
+import type { PenmaNode, LayoutDirection, PrimaryAxisAlign, CounterAxisAlign } from '@/types/document';
 
-// ── Resizing icons (Figma-accurate, pixel-hinted) ──────────
+// ─── Icons ──────────────────────────────────────────────────
 
-const AutoWidthIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <line x1="1.5" y1="3.5" x2="1.5" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="2" y1="8" x2="6.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <polyline points="5,6.2 6.8,8 5,9.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+const FlowHorizIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="5" cy="8" r="1.5" fill="currentColor" stroke="none" />
+    <line x1="7.5" y1="8" x2="11" y2="8" />
+    <polyline points="9.5,6.5 11,8 9.5,9.5" />
   </svg>
 );
 
-const AutoHeightIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <line x1="3.5" y1="1.5" x2="12.5" y2="1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="8" y1="2" x2="8" y2="6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <polyline points="6.2,5 8,6.8 9.8,5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+const FlowVertIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="8" cy="5" r="1.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="7.5" x2="8" y2="11" />
+    <polyline points="6.5,9.5 8,11 9.5,9.5" />
   </svg>
 );
 
-const FixedSizeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="3.5" y="4.5" width="9" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <line x1="6" y1="7" x2="10" y2="7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
-    <line x1="6" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
+const FlowWrapIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <rect x="3" y="4" width="3" height="3" rx="0.8" fill="currentColor" />
+    <rect x="7" y="4" width="3" height="3" rx="0.8" fill="currentColor" />
+    <rect x="11" y="4" width="3" height="3" rx="0.8" fill="currentColor" opacity="0.4" />
+    <rect x="3" y="9" width="3" height="3" rx="0.8" fill="currentColor" opacity="0.4" />
   </svg>
 );
 
-const ConstrainIcon: React.FC<{ active?: boolean; size?: number }> = ({ active, size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+const FlowScrollIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="5.5,5 8,3 10.5,5" />
+    <line x1="8" y1="3.5" x2="8" y2="9" />
+    <polyline points="5.5,11 8,13 10.5,11" />
+  </svg>
+);
+
+const ReverseIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 5H6.5a2.5 2.5 0 000 5H8" />
+    <polyline points="10,3 12,5 10,7" />
+  </svg>
+);
+
+/** Auto layout toggle icon (shown in header) */
+const AutoLayoutIcon: React.FC = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+    <rect x="2" y="4" width="5" height="8" rx="1" />
+    <rect x="9" y="4" width="5" height="8" rx="1" />
+    <line x1="4.5" y1="7" x2="4.5" y2="9" />
+    <line x1="11.5" y1="7" x2="11.5" y2="9" />
+  </svg>
+);
+
+const GapIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+    <path d="M4 3.5C3 3.5 2.5 4.5 2.5 5v4c0 .5.5 1.5 1.5 1.5" />
+    <path d="M10 3.5c1 0 1.5 1 1.5 1.5v4c0 .5-.5 1.5-1.5 1.5" />
+    <line x1="7" y1="4" x2="7" y2="10" />
+  </svg>
+);
+
+const PadHorizIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+    <line x1="2" y1="3" x2="2" y2="11" />
+    <line x1="12" y1="3" x2="12" y2="11" />
+    <line x1="4" y1="7" x2="10" y2="7" />
+  </svg>
+);
+
+const PadVertIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+    <line x1="3" y1="2" x2="11" y2="2" />
+    <line x1="3" y1="12" x2="11" y2="12" />
+    <line x1="7" y1="4" x2="7" y2="10" />
+  </svg>
+);
+
+const ConstrainIcon: React.FC<{ active?: boolean }> = ({ active }) => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
     {active ? (
       <>
         <path d="M5 3.5H3.5V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -54,252 +105,145 @@ const ConstrainIcon: React.FC<{ active?: boolean; size?: number }> = ({ active, 
   </svg>
 );
 
-// ── Sizing mode icons (for dropdown items) ──────────────────
+// ─── Shared styles ──────────────────────────────────────────
 
-const FixedModeIcon: React.FC = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round">
-    <line x1="1.5" y1="2" x2="1.5" y2="10" />
-    <line x1="10.5" y1="2" x2="10.5" y2="10" />
-    <line x1="3" y1="6" x2="9" y2="6" />
-  </svg>
-);
+const mutedStyle: React.CSSProperties = { color: 'var(--penma-text-muted)' };
 
-const HugModeIcon: React.FC = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3.5,4 1.5,6 3.5,8" />
-    <polyline points="8.5,4 10.5,6 8.5,8" />
-    <rect x="4.5" y="4" width="3" height="4" rx="0.5" strokeWidth="1" />
-  </svg>
-);
+const inputBgStyle: React.CSSProperties = {
+  background: 'var(--penma-hover-bg)',
+  color: 'var(--penma-text)',
+  border: 'none',
+  borderRadius: 6,
+};
 
-const FillModeIcon: React.FC = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1.5" y="3.5" width="9" height="5" rx="0.75" />
-    <polyline points="3.5,6 1.5,6" />
-    <polyline points="8.5,6 10.5,6" />
-  </svg>
-);
+// ─── Small reusable components ──────────────────────────────
 
-// ── Sizing mode types & options ──────────────────────────────
-
-type SizingModeValue = 'fixed' | 'hug' | 'fill';
-
-const SIZING_OPTIONS: { value: SizingModeValue; wLabel: string; hLabel: string; shortLabel: string; Icon: React.FC }[] = [
-  { value: 'fixed', wLabel: 'Fixed width', hLabel: 'Fixed height', shortLabel: 'Fixed', Icon: FixedModeIcon },
-  { value: 'hug', wLabel: 'Hug content', hLabel: 'Hug content', shortLabel: 'Hug', Icon: HugModeIcon },
-  { value: 'fill', wLabel: 'Fill container', hLabel: 'Fill container', shortLabel: 'Fill', Icon: FillModeIcon },
-];
-
-// ── Dimension row: value input + mode selector ──────────────
-
-const DimensionRow: React.FC<{
-  label: string;
+const NumericInput: React.FC<{
   value: number;
-  mode: SizingModeValue;
-  onValueChange: (value: string) => void;
-  onModeChange: (mode: SizingModeValue) => void;
-  fillDisabled?: boolean;
-}> = ({ label, value, mode, onValueChange, onModeChange, fillDisabled }) => {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  onChange: (v: number) => void;
+  prefix?: React.ReactNode;
+  className?: string;
+}> = ({ value, onChange, prefix, className = '' }) => (
+  <div
+    className={`flex items-center h-[30px] rounded-md px-2 gap-1.5 flex-1 ${className}`}
+    style={inputBgStyle}
+  >
+    {prefix && <span style={mutedStyle} className="flex items-center shrink-0">{prefix}</span>}
+    <input
+      type="number"
+      value={value}
+      onChange={(e) => onChange(Math.max(0, Math.min(9999, Number(e.target.value) || 0)))}
+      className="w-full bg-transparent text-[12px] focus:outline-none
+                 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none
+                 [&::-webkit-outer-spin-button]:appearance-none"
+      style={{ color: 'var(--penma-text)' }}
+    />
+  </div>
+);
 
-  const axis = label as 'W' | 'H';
-  const isValueEditable = mode === 'fixed';
-  const displayValue = value % 1 === 0 ? String(value) : value.toFixed(2);
-  const currentOption = SIZING_OPTIONS.find((o) => o.value === mode)!;
-  const modeLabel = axis === 'W' ? currentOption.wLabel : currentOption.hLabel;
+const FlowBtn: React.FC<{
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}> = ({ active, onClick, title, children }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className="flex h-[30px] flex-1 items-center justify-center cursor-pointer
+               transition-all duration-150 ease-out"
+    style={{
+      background: active ? 'var(--penma-surface)' : 'transparent',
+      color: active ? 'var(--penma-text)' : 'var(--penma-text-muted)',
+      borderRadius: active ? 6 : 0,
+      boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.06)' : undefined,
+    }}
+  >
+    {children}
+  </button>
+);
 
-  const commit = () => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== String(value)) {
-      onValueChange(trimmed);
-    }
-    setEditing(false);
-  };
+const IconBtn: React.FC<{
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, active, children }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className="flex h-[28px] w-[28px] items-center justify-center rounded-md cursor-pointer
+               transition-all duration-150 ease-out shrink-0"
+    style={{
+      color: active ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+      background: active ? 'var(--penma-primary-light)' : 'transparent',
+    }}
+    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--penma-hover-bg)'; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--penma-primary-light)' : 'transparent'; }}
+  >
+    {children}
+  </button>
+);
 
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.select();
-  }, [editing]);
+// ─── Alignment grid (3×3 Figma style) ──────────────────────
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [dropdownOpen]);
+const AlignmentGrid: React.FC<{
+  direction: LayoutDirection;
+  primary: PrimaryAxisAlign;
+  counter: CounterAxisAlign;
+  onChangePrimary: (v: PrimaryAxisAlign) => void;
+  onChangeCounter: (v: CounterAxisAlign) => void;
+}> = ({ direction, primary, counter, onChangePrimary, onChangeCounter }) => {
+  const isHoriz = direction === 'horizontal' || direction === 'wrap';
+  const primaryOpts: PrimaryAxisAlign[] = ['start', 'center', 'end'];
+  const counterOpts: CounterAxisAlign[] = ['start', 'center', 'end'];
+  const isSpaceBetween = primary === 'space-between';
 
   return (
-    <div className="flex items-center gap-1.5">
-      {/* Label */}
-      <span
-        className="shrink-0 w-[14px] text-[11px] font-medium select-none"
-        style={{ color: 'var(--penma-text-muted)' }}
-      >
-        {label}
-      </span>
-
-      {/* Value input */}
-      <div
-        className="flex min-w-0 h-[28px] rounded overflow-hidden transition-colors duration-150"
-        style={{
-          width: isValueEditable ? 64 : 52,
-          border: editing
-            ? '1.5px solid var(--penma-primary)'
-            : '1px solid var(--penma-border)',
-          background: isValueEditable ? 'var(--penma-surface)' : 'var(--penma-hover-bg)',
-        }}
-      >
-        {isValueEditable ? (
-          editing ? (
-            <input
-              ref={inputRef}
-              autoFocus
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value.replace(/[^0-9.\-]/g, ''))}
-              onBlur={commit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commit();
-                if (e.key === 'Escape') setEditing(false);
-                if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  const step = e.shiftKey ? 10 : 1;
-                  setEditValue(String(Math.round((parseFloat(editValue) || 0) + step)));
-                }
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  const step = e.shiftKey ? 10 : 1;
-                  setEditValue(String(Math.max(0, Math.round((parseFloat(editValue) || 0) - step))));
-                }
-              }}
-              className="w-full px-1.5 text-[11px] outline-none bg-transparent
-                         [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              style={{ color: 'var(--penma-text)' }}
-            />
-          ) : (
+    <div
+      className="grid grid-cols-3 rounded-lg p-[3px]"
+      style={{ background: 'var(--penma-hover-bg)', gap: 2 }}
+    >
+      {counterOpts.map((ca) =>
+        primaryOpts.map((pa) => {
+          const isActive = !isSpaceBetween && primary === pa && counter === ca;
+          const bars = isActive
+            ? (isHoriz
+              ? [{ w: 2, h: 8 }, { w: 2, h: 5 }, { w: 2, h: 7 }]
+              : [{ w: 8, h: 2 }, { w: 5, h: 2 }, { w: 7, h: 2 }])
+            : null;
+          return (
             <button
-              onClick={() => { setEditing(true); setEditValue(displayValue); }}
-              className="w-full px-1.5 text-[11px] text-left truncate cursor-text
-                         hover:bg-[var(--penma-hover-bg)] transition-colors duration-150"
-              style={{ color: 'var(--penma-text)' }}
+              key={`${pa}-${ca}`}
+              onClick={() => { onChangePrimary(pa); onChangeCounter(ca); }}
+              className="flex h-[22px] w-[22px] items-center justify-center rounded-md cursor-pointer
+                         transition-all duration-150 ease-out"
+              style={{
+                background: isActive ? 'var(--penma-surface)' : 'transparent',
+                boxShadow: isActive ? '0 0.5px 2px rgba(0,0,0,0.08)' : undefined,
+              }}
+              title={`${pa} / ${ca}`}
             >
-              {displayValue}
+              {bars ? (
+                <div className={`flex ${isHoriz ? 'flex-row' : 'flex-col'} gap-[1px] items-${isHoriz ? (ca === 'start' ? 'start' : ca === 'end' ? 'end' : 'center') : 'center'} justify-${pa === 'start' ? 'start' : pa === 'end' ? 'end' : 'center'}`}>
+                  {bars.map((b, i) => (
+                    <div key={i} className="rounded-sm" style={{ width: b.w, height: b.h, background: 'var(--penma-primary)' }} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-full" style={{ width: 4, height: 4, background: 'var(--penma-border-strong)' }} />
+              )}
             </button>
-          )
-        ) : (
-          <div
-            className="w-full px-1.5 flex items-center text-[11px] truncate"
-            style={{ color: 'var(--penma-text-muted)' }}
-          >
-            {mode === 'hug' ? 'Auto' : 'Fill'}
-          </div>
-        )}
-      </div>
-
-      {/* Mode dropdown trigger — shows current mode */}
-      <div ref={dropdownRef} className="relative flex-1 min-w-0">
-        <button
-          onClick={() => setDropdownOpen(!dropdownOpen)}
-          className="flex w-full h-[28px] items-center gap-1 px-1.5 rounded cursor-pointer
-                     transition-colors duration-150 hover:bg-[var(--penma-hover-bg)]"
-          style={{ color: 'var(--penma-text-secondary)' }}
-          aria-label={modeLabel}
-          aria-expanded={dropdownOpen}
-          aria-haspopup="listbox"
-        >
-          <span style={{ color: 'var(--penma-text-muted)' }}>
-            <currentOption.Icon />
-          </span>
-          <span className="text-[10px] truncate" style={{ color: 'var(--penma-text-muted)' }}>
-            {currentOption.shortLabel}
-          </span>
-          <svg
-            width="8" height="5" viewBox="0 0 8 5" className="ml-auto shrink-0"
-            style={{ color: 'var(--penma-text-muted)', opacity: 0.6 }}
-          >
-            <path d="M0.5 0.5L4 4L7.5 0.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-
-        {dropdownOpen && (
-          <div
-            className="absolute left-0 top-full z-50 mt-1 min-w-[148px] rounded-lg py-1"
-            style={{
-              background: 'var(--penma-surface)',
-              border: '1px solid var(--penma-border)',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
-            }}
-            role="listbox"
-            aria-label={`${label} sizing mode`}
-          >
-            {SIZING_OPTIONS.map((opt) => {
-              const disabled = opt.value === 'fill' && fillDisabled;
-              const isActive = mode === opt.value;
-              const optLabel = axis === 'W' ? opt.wLabel : opt.hLabel;
-              return (
-                <button
-                  key={opt.value}
-                  role="option"
-                  aria-selected={isActive}
-                  onClick={() => {
-                    if (!disabled) {
-                      onModeChange(opt.value);
-                      setDropdownOpen(false);
-                    }
-                  }}
-                  disabled={disabled}
-                  className={`flex w-full items-center gap-2 px-2.5 py-[6px] text-[11px] text-left cursor-pointer
-                    transition-colors duration-150
-                    ${isActive ? 'font-medium' : ''}
-                    ${disabled ? 'cursor-not-allowed opacity-35' : 'hover:bg-[var(--penma-hover-bg)]'}`}
-                  style={{
-                    color: isActive ? 'var(--penma-primary)' : 'var(--penma-text)',
-                    background: isActive ? 'var(--penma-primary-light)' : undefined,
-                  }}
-                >
-                  <span style={{ color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-muted)' }}>
-                    <opt.Icon />
-                  </span>
-                  {optLabel}
-                  {isActive && (
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-auto" stroke="var(--penma-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="1.5,5.5 4,8 8.5,2.5" />
-                    </svg>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+          );
+        })
+      )}
     </div>
   );
 };
 
-// ── Resizing preset logic ───────────────────────────────────
+// ─── Dimension cell: [W 1616 ▾] ─────────────────────────────
 
-type ResizingPreset = 'auto-width' | 'auto-height' | 'fixed';
-
-function getResizingPreset(hMode: SizingModeValue, vMode: SizingModeValue): ResizingPreset {
-  if (hMode === 'hug' && vMode === 'hug') return 'auto-width';
-  if (vMode === 'hug') return 'auto-height';
-  return 'fixed';
-}
-
-// ── Compact dimension cell: [W 34 Hug] — value + mode in one pill ──
-
-const MODE_OPTIONS: { value: SizingModeValue; label: string }[] = [
-  { value: 'fixed', label: 'Fixed' },
-  { value: 'hug', label: 'Hug' },
-  { value: 'fill', label: 'Fill' },
-];
+type SizingModeValue = 'fixed' | 'hug' | 'fill';
 
 const DimCell: React.FC<{
   label: string;
@@ -315,7 +259,6 @@ const DimCell: React.FC<{
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const display = value % 1 === 0 ? String(value) : value.toFixed(2);
-  const modeLabel = mode === 'hug' ? 'Hug' : mode === 'fill' ? 'Fill' : 'Fixed';
 
   const commit = () => {
     const v = editValue.trim();
@@ -323,25 +266,23 @@ const DimCell: React.FC<{
     setEditing(false);
   };
 
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.select();
-  }, [editing]);
-
+  useEffect(() => { if (editing && inputRef.current) inputRef.current.select(); }, [editing]);
   useEffect(() => {
     if (!dropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false);
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    const h = (e: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [dropdownOpen]);
 
+  const options: { value: SizingModeValue; label: string }[] = [
+    { value: 'fixed', label: 'Fixed' },
+    { value: 'hug', label: 'Hug' },
+    { value: 'fill', label: 'Fill' },
+  ];
+
   return (
-    <div
-      className="flex flex-1 min-w-0 h-[32px] items-center rounded-lg px-2 gap-1.5"
-      style={{ background: 'var(--penma-hover-bg)' }}
-    >
-      <span className="text-[11px] font-medium shrink-0 select-none" style={{ color: 'var(--penma-text-muted)' }}>{label}</span>
+    <div className="flex flex-1 min-w-0 h-[30px] items-center rounded-md px-2 gap-1" style={inputBgStyle}>
+      <span className="text-[11px] font-medium shrink-0 select-none" style={mutedStyle}>{label}</span>
       {editing ? (
         <input
           ref={inputRef} autoFocus value={editValue}
@@ -353,36 +294,32 @@ const DimCell: React.FC<{
             if (e.key === 'ArrowUp') { e.preventDefault(); setEditValue(String(Math.round((parseFloat(editValue) || 0) + (e.shiftKey ? 10 : 1)))); }
             if (e.key === 'ArrowDown') { e.preventDefault(); setEditValue(String(Math.max(0, Math.round((parseFloat(editValue) || 0) - (e.shiftKey ? 10 : 1))))); }
           }}
-          className="w-10 min-w-0 text-[11px] outline-none bg-transparent rounded px-0.5
+          className="w-10 min-w-0 text-[11px] outline-none bg-transparent
                      [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          style={{ color: 'var(--penma-text)', border: '1px solid var(--penma-primary)' }}
+          style={{ color: 'var(--penma-text)' }}
         />
       ) : (
         <button
-          onClick={() => { setEditing(true); setEditValue(display); }}
-          className="text-[11px] cursor-text hover:underline"
-          style={{ color: 'var(--penma-text)' }}
-        >{display}</button>
+          onClick={() => { if (mode === 'fixed') { setEditing(true); setEditValue(display); } }}
+          className="text-[11px] cursor-text hover:underline truncate"
+          style={{ color: mode === 'fixed' ? 'var(--penma-text)' : 'var(--penma-text-muted)' }}
+        >
+          {mode === 'fixed' ? display : mode === 'hug' ? 'Auto' : 'Fill'}
+        </button>
       )}
       {/* Mode dropdown */}
       <div ref={dropdownRef} className="relative ml-auto shrink-0">
-        <button
-          onClick={() => setDropdownOpen(!dropdownOpen)}
-          className="text-[11px] font-medium cursor-pointer hover:opacity-70 transition-opacity"
-          style={{ color: 'var(--penma-text)' }}
-        >
-          {modeLabel}
+        <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center cursor-pointer">
+          <svg width="8" height="5" viewBox="0 0 8 5" style={{ color: 'var(--penma-text-muted)', opacity: 0.6 }}>
+            <path d="M0.5 0.5L4 4L7.5 0.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
         {dropdownOpen && (
           <div
-            className="absolute right-0 top-full z-50 mt-1 min-w-[120px] rounded-lg py-1"
-            style={{
-              background: 'var(--penma-surface)',
-              border: '1px solid var(--penma-border)',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
-            }}
+            className="absolute right-0 top-full z-50 mt-1 min-w-[110px] rounded-lg py-1"
+            style={{ background: 'var(--penma-surface)', border: '1px solid var(--penma-border)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
           >
-            {MODE_OPTIONS.map((opt) => {
+            {options.map((opt) => {
               const disabled = opt.value === 'fill' && fillDisabled;
               const isActive = mode === opt.value;
               return (
@@ -390,12 +327,12 @@ const DimCell: React.FC<{
                   key={opt.value}
                   onClick={() => { if (!disabled) { onModeChange(opt.value); setDropdownOpen(false); } }}
                   disabled={disabled}
-                  className={`flex w-full items-center px-2.5 py-[6px] text-[11px] text-left cursor-pointer transition-colors duration-150
-                    ${isActive ? 'font-medium' : ''}
+                  className={`flex w-full items-center px-2.5 py-[5px] text-[11px] cursor-pointer transition-colors duration-150
                     ${disabled ? 'cursor-not-allowed opacity-35' : 'hover:bg-[var(--penma-hover-bg)]'}`}
                   style={{
                     color: isActive ? 'var(--penma-primary)' : 'var(--penma-text)',
                     background: isActive ? 'var(--penma-primary-light)' : undefined,
+                    fontWeight: isActive ? 500 : 400,
                   }}
                 >
                   {opt.label}
@@ -414,23 +351,29 @@ const DimCell: React.FC<{
   );
 };
 
-// ── Main Layout Panel ──────────────────────────────────────
+// ─── Main Layout Panel ──────────────────────────────────────
 
 export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const toggleAutoLayout = useEditorStore((s) => s.toggleAutoLayout);
+  const updateAutoLayout = useEditorStore((s) => s.updateAutoLayout);
+  const updateAutoLayoutPadding = useEditorStore((s) => s.updateAutoLayoutPadding);
+  const setUniformPadding = useEditorStore((s) => s.setUniformPadding);
+  const updateSizing = useEditorStore((s) => s.updateSizing);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const updateDocumentViewport = useEditorStore((s) => s.updateDocumentViewport);
-  const updateSizing = useEditorStore((s) => s.updateSizing);
   const documents = useEditorStore((s) => s.documents);
   const pushHistory = useEditorStore((s) => s.pushHistory);
+
   const [constrainProportions, setConstrainProportions] = useState(false);
 
-  const parentDoc = documents.find((d) => d.rootNode.id === node.id);
+  const layout = node.autoLayout;
+  const hasAutoLayout = !!layout;
   const sizing = node.sizing;
-  const hMode: SizingModeValue = sizing?.horizontal ?? 'fixed';
-  const vMode: SizingModeValue = sizing?.vertical ?? 'fixed';
+  const hasChildren = node.children.length > 0;
+  const parentDoc = documents.find((d) => d.rootNode.id === node.id);
 
-  // Find parent node to determine context
+  // Find parent node to determine fill eligibility
   const parentNode = (() => {
     for (const doc of documents) {
       const found = findParentNode(doc.rootNode, node.id);
@@ -440,23 +383,16 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   })();
   const fillDisabled = !parentNode && !parentDoc;
 
-  const resizingPreset = getResizingPreset(hMode, vMode);
+  const hMode: SizingModeValue = sizing?.horizontal ?? 'fixed';
+  const vMode: SizingModeValue = sizing?.vertical ?? 'fixed';
 
-  // Dimensions: overrides → computed → bounds (consistent with renderer)
+  // Dimensions
   const w = parentDoc
     ? parentDoc.viewport.width
-    : Math.round(parseFloat(
-        node.styles.overrides['width']
-        || node.styles.computed['width']
-        || ''
-      ) || node.bounds.width);
+    : Math.round(parseFloat(node.styles.overrides['width'] || node.styles.computed['width'] || '') || node.bounds.width);
   const h = parentDoc
     ? parentDoc.viewport.height
-    : Math.round(parseFloat(
-        node.styles.overrides['height']
-        || node.styles.computed['height']
-        || ''
-      ) || node.bounds.height);
+    : Math.round(parseFloat(node.styles.overrides['height'] || node.styles.computed['height'] || '') || node.bounds.height);
 
   const handleDimensionChange = useCallback(
     (prop: 'width' | 'height', value: string) => {
@@ -466,9 +402,7 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
       if (constrainProportions && w > 0 && h > 0) {
         const ratio = w / h;
-        const otherProp = prop === 'width' ? 'height' : 'width';
         const otherNum = prop === 'width' ? Math.round(num / ratio) : Math.round(num * ratio);
-
         if (parentDoc) {
           updateDocumentViewport(parentDoc.id, {
             width: prop === 'width' ? num : otherNum,
@@ -479,16 +413,16 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
             height: `${prop === 'height' ? num : otherNum}px`,
           });
         } else {
+          const otherProp = prop === 'width' ? 'height' : 'width';
           updateNodeStyles(node.id, { [prop]: `${num}px`, [otherProp]: `${otherNum}px` });
           updateNodeBounds(node.id, { [prop]: num, [otherProp]: otherNum });
         }
       } else {
         if (parentDoc) {
-          const newViewport = {
+          updateDocumentViewport(parentDoc.id, {
             width: prop === 'width' ? num : parentDoc.viewport.width,
             height: prop === 'height' ? num : parentDoc.viewport.height,
-          };
-          updateDocumentViewport(parentDoc.id, newViewport);
+          });
           updateNodeStyles(node.id, { [prop]: `${num}px` });
         } else {
           updateNodeStyles(node.id, { [prop]: `${num}px` });
@@ -507,95 +441,80 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
     [node.id, updateSizing, pushHistory]
   );
 
-  const handleResizingPreset = useCallback(
-    (preset: ResizingPreset) => {
-      pushHistory('Change resizing');
-      switch (preset) {
-        case 'auto-width':
-          // Both W and H hug content
-          updateSizing(node.id, 'horizontal', 'hug');
-          updateSizing(node.id, 'vertical', 'hug');
-          break;
-        case 'auto-height':
-          // W fixed, H hug content
-          updateSizing(node.id, 'horizontal', 'fixed');
-          updateSizing(node.id, 'vertical', 'hug');
-          break;
-        case 'fixed':
-          // Both fixed
-          updateSizing(node.id, 'horizontal', 'fixed');
-          updateSizing(node.id, 'vertical', 'fixed');
-          break;
-      }
+  const changeLayout = useCallback(
+    (patch: Partial<NonNullable<typeof layout>>) => {
+      pushHistory('Update layout');
+      updateAutoLayout(node.id, patch);
     },
-    [node.id, updateSizing, pushHistory]
+    [node.id, updateAutoLayout, pushHistory]
   );
 
-  const resizingPresets: { value: ResizingPreset; label: string; Icon: React.FC<{ size?: number }> }[] = [
-    { value: 'auto-width', label: 'Auto width', Icon: AutoWidthIcon },
-    { value: 'auto-height', label: 'Auto height', Icon: AutoHeightIcon },
-    { value: 'fixed', label: 'Fixed size', Icon: FixedSizeIcon },
-  ];
+  const pad = layout?.padding;
+  const isUniformPad = layout ? !layout.independentPadding : true;
 
   return (
     <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
-      {/* Header */}
-      <div className="flex h-8 items-center px-3">
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: 'var(--penma-text-secondary)', fontFamily: 'var(--font-heading)' }}
-        >
-          Layout
+      {/* ── Header: "Layout" with auto layout toggle in top-right ── */}
+      <div className="flex h-9 items-center justify-between px-4">
+        <span className="text-[12px] font-semibold" style={{ color: 'var(--penma-text)' }}>
+          {hasAutoLayout ? 'Auto layout' : 'Layout'}
         </span>
+        <div className="flex items-center gap-1">
+          <IconBtn
+            onClick={() => {
+              if (!hasChildren && !hasAutoLayout) return;
+              pushHistory(hasAutoLayout ? 'Remove auto layout' : 'Add auto layout');
+              toggleAutoLayout(node.id);
+            }}
+            title="Toggle auto layout"
+            active={hasAutoLayout}
+          >
+            <AutoLayoutIcon />
+          </IconBtn>
+        </div>
       </div>
 
-      <div className="px-3 pb-3 flex flex-col gap-2.5">
-        {/* ── Row 1: Switcher ── */}
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium" style={{ color: 'var(--penma-text-muted)' }}>
-            Resizing
-          </span>
-          <div
-            className="flex h-[30px] rounded-md p-[3px]"
-            style={{ background: 'var(--penma-hover-bg)' }}
-            role="radiogroup"
-            aria-label="Resizing mode"
-          >
-            {resizingPresets.map(({ value, label, Icon }) => {
-              const isActive = resizingPreset === value;
-              return (
-                <button
-                  key={value}
-                  role="radio"
-                  aria-checked={isActive}
-                  onClick={() => handleResizingPreset(value)}
-                  title={label}
-                  className={`flex flex-1 items-center justify-center rounded cursor-pointer
-                    transition-all duration-150 ease-out
-                    ${isActive
-                      ? 'shadow-sm'
-                      : 'hover:text-[var(--penma-text-secondary)]'
-                    }`}
-                  style={{
-                    background: isActive ? 'var(--penma-surface)' : 'transparent',
-                    color: isActive ? 'var(--penma-text)' : 'var(--penma-text-muted)',
-                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.06)' : undefined,
-                  }}
+      <div className="px-4 pb-3 flex flex-col gap-3">
+        {/* ── Flow (auto layout only) ── */}
+        {hasAutoLayout && layout && (
+          <div>
+            <span className="block text-[11px] mb-1.5" style={mutedStyle}>Flow</span>
+            <div className="flex items-center gap-1.5">
+              <div
+                className="flex flex-1 rounded-lg p-[2px]"
+                style={{ background: 'var(--penma-hover-bg)' }}
+              >
+                <FlowBtn active={layout.direction === 'horizontal'} onClick={() => changeLayout({ direction: 'horizontal' })} title="Horizontal">
+                  <FlowHorizIcon />
+                </FlowBtn>
+                <FlowBtn active={layout.direction === 'vertical'} onClick={() => changeLayout({ direction: 'vertical' })} title="Vertical">
+                  <FlowVertIcon />
+                </FlowBtn>
+                <FlowBtn
+                  active={layout.overflow === 'scroll'}
+                  onClick={() => changeLayout({ overflow: layout.overflow === 'scroll' ? 'hidden' : 'scroll', clipContent: true })}
+                  title="Scroll"
                 >
-                  <Icon size={16} />
-                </button>
-              );
-            })}
+                  <FlowScrollIcon />
+                </FlowBtn>
+                <FlowBtn active={layout.direction === 'wrap'} onClick={() => changeLayout({ direction: 'wrap' })} title="Wrap">
+                  <FlowWrapIcon />
+                </FlowBtn>
+              </div>
+              <IconBtn
+                onClick={() => changeLayout({ reverse: !layout.reverse })}
+                title="Reverse order"
+                active={layout.reverse}
+              >
+                <ReverseIcon />
+              </IconBtn>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* ── Row 2: W & H always visible ── */}
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium" style={{ color: 'var(--penma-text-muted)' }}>
-            {resizingPreset === 'fixed' ? 'Dimensions' : 'Resizing'}
-          </span>
-
-          {/* Side-by-side [W val Mode] [H val Mode] + constrain */}
+        {/* ── Dimensions ── */}
+        <div>
+          <span className="block text-[11px] mb-1.5" style={mutedStyle}>Dimensions</span>
           <div className="flex items-center gap-1.5">
             <DimCell
               label="W"
@@ -613,27 +532,136 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
               onModeChange={(m) => handleSizingChange('vertical', m)}
               fillDisabled={fillDisabled}
             />
-            <button
+            <IconBtn
               onClick={() => setConstrainProportions(!constrainProportions)}
               title={constrainProportions ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
-              aria-pressed={constrainProportions}
-              className="shrink-0 flex h-[28px] w-[28px] items-center justify-center rounded cursor-pointer
-                         transition-all duration-150 ease-out"
-              style={{
-                background: constrainProportions ? 'var(--penma-primary-light)' : 'transparent',
-                color: constrainProportions ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
-              }}
+              active={constrainProportions}
             >
-              <ConstrainIcon active={constrainProportions} size={14} />
-            </button>
+              <ConstrainIcon active={constrainProportions} />
+            </IconBtn>
           </div>
         </div>
+
+        {/* ── Alignment + Gap (auto layout only) ── */}
+        {hasAutoLayout && layout && (
+          <>
+            <div className="flex gap-3">
+              <div className="shrink-0">
+                <span className="block text-[11px] mb-1.5" style={mutedStyle}>Alignment</span>
+                <AlignmentGrid
+                  direction={layout.direction}
+                  primary={layout.primaryAxisAlign}
+                  counter={layout.counterAxisAlign}
+                  onChangePrimary={(v) => changeLayout({ primaryAxisAlign: v })}
+                  onChangeCounter={(v) => changeLayout({ counterAxisAlign: v })}
+                />
+                <button
+                  onClick={() => changeLayout({ primaryAxisAlign: layout.primaryAxisAlign === 'space-between' ? 'start' : 'space-between' })}
+                  className="mt-1.5 flex h-[22px] w-full items-center justify-center gap-1 rounded-md cursor-pointer
+                             transition-all duration-150 ease-out text-[9px]"
+                  style={{
+                    background: layout.primaryAxisAlign === 'space-between' ? 'var(--penma-primary-light)' : 'var(--penma-hover-bg)',
+                    color: layout.primaryAxisAlign === 'space-between' ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+                    fontWeight: layout.primaryAxisAlign === 'space-between' ? 500 : 400,
+                  }}
+                  title="Space between"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <rect x="1" y="3" width="2" height="6" rx="0.5" />
+                    <rect x="5" y="3" width="2" height="6" rx="0.5" />
+                    <rect x="9" y="3" width="2" height="6" rx="0.5" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1">
+                <span className="block text-[11px] mb-1.5" style={mutedStyle}>Gap</span>
+                {layout.direction === 'wrap' ? (
+                  <div className="flex flex-col gap-1.5">
+                    <NumericInput value={layout.gap} onChange={(v) => changeLayout({ gap: v })} prefix={<GapIcon />} />
+                    <NumericInput
+                      value={layout.counterAxisGap ?? layout.gap}
+                      onChange={(v) => changeLayout({ counterAxisGap: v })}
+                      prefix={
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                          <path d="M3.5 4C3.5 3 4.5 2.5 5 2.5h4c.5 0 1.5.5 1.5 1.5" />
+                          <path d="M3.5 10c0 1 1 1.5 1.5 1.5h4c.5 0 1.5-.5 1.5-1.5" />
+                          <line x1="4" y1="7" x2="10" y2="7" />
+                        </svg>
+                      }
+                    />
+                  </div>
+                ) : (
+                  <NumericInput value={layout.gap} onChange={(v) => changeLayout({ gap: v })} prefix={<GapIcon />} />
+                )}
+                <div style={{ height: layout.direction === 'wrap' ? 0 : 30 }} />
+              </div>
+            </div>
+
+            {/* ── Padding ── */}
+            <div>
+              <span className="block text-[11px] mb-1.5" style={mutedStyle}>Padding</span>
+              <div className="flex items-center gap-1.5">
+                {isUniformPad && pad ? (
+                  <>
+                    <NumericInput
+                      value={pad.left}
+                      onChange={(v) => { pushHistory('Change padding'); setUniformPadding(node.id, v); }}
+                      prefix={<PadHorizIcon />}
+                    />
+                    <NumericInput
+                      value={pad.top}
+                      onChange={(v) => { pushHistory('Change padding'); setUniformPadding(node.id, v); }}
+                      prefix={<PadVertIcon />}
+                    />
+                  </>
+                ) : pad ? (
+                  <div className="flex-1 grid grid-cols-2 gap-1">
+                    <NumericInput value={pad.top} onChange={(v) => { pushHistory('Change padding'); updateAutoLayoutPadding(node.id, 'top', v); }} prefix={<span className="text-[9px]">T</span>} />
+                    <NumericInput value={pad.right} onChange={(v) => { pushHistory('Change padding'); updateAutoLayoutPadding(node.id, 'right', v); }} prefix={<span className="text-[9px]">R</span>} />
+                    <NumericInput value={pad.bottom} onChange={(v) => { pushHistory('Change padding'); updateAutoLayoutPadding(node.id, 'bottom', v); }} prefix={<span className="text-[9px]">B</span>} />
+                    <NumericInput value={pad.left} onChange={(v) => { pushHistory('Change padding'); updateAutoLayoutPadding(node.id, 'left', v); }} prefix={<span className="text-[9px]">L</span>} />
+                  </div>
+                ) : null}
+                {layout && (
+                  <IconBtn
+                    onClick={() => changeLayout({ independentPadding: !layout.independentPadding })}
+                    title={isUniformPad ? 'Individual padding' : 'Uniform padding'}
+                    active={layout.independentPadding}
+                  >
+                    {isUniformPad ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
+                  </IconBtn>
+                )}
+              </div>
+            </div>
+
+            {/* ── Clip content ── */}
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <div
+                className="relative flex h-[18px] w-[30px] rounded-full cursor-pointer transition-colors duration-200"
+                style={{ background: layout.clipContent ? 'var(--penma-primary)' : 'var(--penma-border)' }}
+              >
+                <div
+                  className="absolute top-[2px] h-[14px] w-[14px] rounded-full transition-all duration-200"
+                  style={{ background: '#fff', left: layout.clipContent ? 14 : 2, boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                />
+              </div>
+              <input
+                type="checkbox"
+                checked={layout.clipContent}
+                onChange={(e) => changeLayout({ clipContent: e.target.checked, overflow: e.target.checked ? 'hidden' : 'visible' })}
+                className="sr-only"
+              />
+              <span className="text-[12px]" style={{ color: 'var(--penma-text-secondary)' }}>Clip content</span>
+            </label>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
-// ── Helper: find parent of a node ──────────────────────────
+// ── Helper ──────────────────────────────────────────────────
 
 function findParentNode(root: PenmaNode, targetId: string): PenmaNode | null {
   for (const child of root.children) {

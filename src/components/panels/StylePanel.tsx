@@ -6,7 +6,6 @@ import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
 import { STYLE_CATEGORIES } from '@/lib/styles/style-resolver';
-import { AutoLayoutPanel } from './AutoLayoutPanel';
 import { LayoutPanel } from './LayoutPanel';
 import { ExportPanel } from './ExportPanel';
 import type { PenmaNode, PenmaFill } from '@/types/document';
@@ -209,22 +208,19 @@ export const StylePanel: React.FC = () => {
         )}
       </div>
 
-      {/* Layout — Figma-style resizing + dimensions */}
-      {!isInstance && (
-        <LayoutPanel node={selectedNode} />
-      )}
-      {isInstance && (
+      {/* Unified Layout panel (includes auto layout toggle) */}
+      {isInstance ? (
         <div className="border-b border-neutral-100 px-3 py-2">
           <div className="flex gap-3 text-[10px] text-neutral-400">
             <span>W {Math.round(selectedNode.bounds.width)}</span>
             <span>H {Math.round(selectedNode.bounds.height)}</span>
           </div>
         </div>
+      ) : (
+        <LayoutPanel node={selectedNode} />
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {/* Auto Layout — Figma-style layout controls */}
-        <AutoLayoutPanel node={selectedNode} />
 
         {Object.entries(STYLE_CATEGORIES)
           .filter(([category]) => {

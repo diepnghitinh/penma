@@ -217,16 +217,13 @@ export const LayerPanel: React.FC = () => {
 
   // Auto-expand first two levels on document load
   const expandedDocIds = useRef<Set<string>>(new Set());
+  // Auto-expand only the document header (collapsed tree) for new documents
   useEffect(() => {
     const toExpand: string[] = [];
     for (const doc of documents) {
       if (expandedDocIds.current.has(doc.id)) continue;
       expandedDocIds.current.add(doc.id);
       toExpand.push(doc.id);
-      const walk = (node: PenmaNode, depth: number) => {
-        if (depth < 2) { toExpand.push(node.id); for (const child of node.children) walk(child, depth + 1); }
-      };
-      walk(doc.rootNode, 0);
     }
     if (toExpand.length > 0) expanded.expandAll(toExpand);
   }, [documents, expanded]);

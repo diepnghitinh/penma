@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-import { Plus, X, Maximize2, Minimize2 } from 'lucide-react';
+import { Plus, Maximize2, Minimize2 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import type { PenmaNode, LayoutDirection, PrimaryAxisAlign, CounterAxisAlign } from '@/types/document';
 
@@ -100,6 +100,16 @@ const TuneIcon: React.FC = () => (
     <line x1="11" y1="2" x2="11" y2="4" />
     <line x1="11" y1="8" x2="11" y2="12" />
     <circle cx="11" cy="6" r="1" />
+  </svg>
+);
+
+/** Scroll icon */
+const ScrollIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="1.5" width="8" height="11" rx="1.5" />
+    <line x1="7" y1="4" x2="7" y2="7" />
+    <polyline points="5.5,5.5 7,4 8.5,5.5" />
+    <polyline points="5.5,8.5 7,10 8.5,8.5" />
   </svg>
 );
 
@@ -210,9 +220,8 @@ const AlignmentGrid: React.FC<{
   const isSpaceBetween = primary === 'space-between';
 
   // Figma shows alignment bars for the active cell
-  const getBarStyle = (pa: PrimaryAxisAlign, ca: CounterAxisAlign, isActive: boolean) => {
+  const getBarStyle = (_pa: PrimaryAxisAlign, _ca: CounterAxisAlign, isActive: boolean) => {
     if (!isActive) return null;
-    // Show 3 small bars oriented by direction
     const bars = isHoriz
       ? [{ w: 2, h: 8 }, { w: 2, h: 5 }, { w: 2, h: 7 }]
       : [{ w: 8, h: 2 }, { w: 5, h: 2 }, { w: 7, h: 2 }];
@@ -267,6 +276,47 @@ const AlignmentGrid: React.FC<{
   );
 };
 
+// ─── Overflow selector ──────────────────────────────────────
+
+type OverflowMode = 'hidden' | 'scroll' | 'visible';
+
+const OVERFLOW_OPTIONS: { value: OverflowMode; label: string }[] = [
+  { value: 'hidden', label: 'Clip' },
+  { value: 'scroll', label: 'Scroll' },
+  { value: 'visible', label: 'Visible' },
+];
+
+const OverflowSelector: React.FC<{
+  value: OverflowMode;
+  onChange: (v: OverflowMode) => void;
+}> = ({ value, onChange }) => (
+  <div
+    className="flex h-[30px] rounded-md p-[2px]"
+    style={{ background: 'var(--penma-hover-bg)' }}
+  >
+    {OVERFLOW_OPTIONS.map((opt) => {
+      const isActive = value === opt.value;
+      return (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className="flex flex-1 items-center justify-center rounded cursor-pointer
+                     transition-all duration-150 ease-out text-[11px]"
+          style={{
+            background: isActive ? 'var(--penma-surface)' : 'transparent',
+            color: isActive ? 'var(--penma-text)' : 'var(--penma-text-muted)',
+            boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.06)' : undefined,
+            fontWeight: isActive ? 500 : 400,
+          }}
+          title={opt.label}
+        >
+          {opt.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
 // ─── Main panel ─────────────────────────────────────────────
 
 interface AutoLayoutPanelProps {
@@ -293,10 +343,25 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
     [node.id, updateAutoLayout, pushHistory]
   );
 
-  // ── No auto layout → show Add button ──
+  // Derive overflow mode from layout
+  const overflowMode: OverflowMode = layout?.overflow ?? (layout?.clipContent ? 'hidden' : 'visible');
+
+  const handleOverflowChange = useCallback(
+    (mode: OverflowMode) => {
+      pushHistory('Change overflow');
+      updateAutoLayout(node.id, {
+        overflow: mode,
+        clipContent: mode === 'hidden',
+      });
+    },
+    [node.id, updateAutoLayout, pushHistory]
+  );
+
+  // ── No auto layout → show Layout header with overflow + Add auto layout button ──
   if (!layout) {
     return (
       <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
+        {/* Section header: Auto layout with add button */}
         <div className="flex h-9 items-center justify-between px-4">
           <span style={{ ...labelStyle, color: 'var(--penma-text-muted)' }}>Auto layout</span>
           <button
@@ -323,10 +388,10 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
   // ── Padding values ──
   const pad = layout.padding;
   const isUniformPad = !layout.independentPadding;
-  const padH = pad.left; // horizontal when uniform
-  const padV = pad.top;  // vertical when uniform
+  const padH = pad.left;
+  const padV = pad.top;
 
-  // ── Has auto layout → full Figma-style controls ──
+  // ── Has auto layout → full controls ──
   return (
     <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
       {/* ── Header ── */}
@@ -336,13 +401,22 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
         </span>
         <IconBtn
           onClick={() => { pushHistory('Remove auto layout'); toggleAutoLayout(node.id); }}
-          title="Remove auto layout"
+          title="Toggle auto layout"
         >
           <AutoLayoutIcon />
         </IconBtn>
       </div>
 
       <div className="px-4 pb-4 flex flex-col gap-3">
+        {/* ── Overflow ── */}
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <ScrollIcon />
+            <span className="text-[11px]" style={mutedStyle}>Overflow</span>
+          </div>
+          <OverflowSelector value={overflowMode} onChange={handleOverflowChange} />
+        </div>
+
         {/* ── Flow ── */}
         <div>
           <span className="block text-[11px] mb-1.5" style={mutedStyle}>Flow</span>
@@ -386,7 +460,7 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
         {/* ── Dimensions (container sizing) ── */}
         {sizing && (
           <div>
-            <span className="block text-[11px] mb-1.5" style={mutedStyle}>Dimensions</span>
+            <span className="block text-[11px] mb-1.5" style={mutedStyle}>Resizing</span>
             <div className="flex items-center gap-1.5">
               {/* W */}
               <div
@@ -573,9 +647,8 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
           </div>
         </div>
 
-        {/* ── Clip content ── */}
+        {/* ── Clip content (legacy toggle, kept for backward compat) ── */}
         <label className="flex items-center gap-2.5 cursor-pointer">
-          {/* Toggle switch (Figma-style pill) */}
           <div
             className="relative flex h-[18px] w-[30px] rounded-full cursor-pointer transition-colors duration-200"
             style={{
@@ -594,7 +667,7 @@ export const AutoLayoutPanel: React.FC<AutoLayoutPanelProps> = ({ node }) => {
           <input
             type="checkbox"
             checked={layout.clipContent}
-            onChange={(e) => change({ clipContent: e.target.checked })}
+            onChange={(e) => change({ clipContent: e.target.checked, overflow: e.target.checked ? 'hidden' : 'visible' })}
             className="sr-only"
           />
           <span className="text-[12px]" style={{ color: 'var(--penma-text-secondary)' }}>

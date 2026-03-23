@@ -56,6 +56,8 @@ export interface AutoLayout {
   independentPadding: boolean;
   /** Clip content that overflows the frame */
   clipContent: boolean;
+  /** Overflow behavior: 'hidden' clips, 'scroll' allows scrolling, 'visible' shows overflow */
+  overflow?: 'hidden' | 'scroll' | 'visible';
   /** Reverse the visual order of children */
   reverse: boolean;
   /** CSS grid: number of columns (e.g. from repeat(4, 1fr) → 4) */

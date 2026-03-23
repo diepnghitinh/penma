@@ -67,6 +67,7 @@ interface FigmaNode {
   layoutSizingHorizontal?: string; // "FIXED" | "HUG" | "FILL"
   layoutSizingVertical?: string;   // "FIXED" | "HUG" | "FILL"
   clipsContent?: boolean;
+  overflowDirection?: 'NONE' | 'HORIZONTAL_SCROLLING' | 'VERTICAL_SCROLLING' | 'HORIZONTAL_AND_VERTICAL_SCROLLING';
   // Grid layout metadata
   gridColumns?: number;
   gridTemplateColumns?: string;
@@ -482,7 +483,13 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     if (al.direction === 'wrap') {
       result.counterAxisSpacing = al.counterAxisGap ?? al.gap;
     }
-    if (al.clipContent) result.clipsContent = true;
+    // Overflow → clipsContent + overflowDirection
+    if (al.overflow === 'scroll') {
+      result.clipsContent = true;
+      result.overflowDirection = 'VERTICAL_SCROLLING';
+    } else if (al.overflow === 'hidden' || al.clipContent) {
+      result.clipsContent = true;
+    }
     // Grid metadata
     if (al.gridColumns) result.gridColumns = al.gridColumns;
     if (al.gridTemplateColumns) result.gridTemplateColumns = al.gridTemplateColumns;

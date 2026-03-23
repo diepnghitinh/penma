@@ -75,8 +75,10 @@ export function autoLayoutToContainerCSS(layout: AutoLayout): React.CSSPropertie
     style.padding = `${top}px ${right}px ${bottom}px ${left}px`;
   }
 
-  // Clip content
-  if (layout.clipContent) {
+  // Overflow / clip content
+  if (layout.overflow) {
+    style.overflow = layout.overflow;
+  } else if (layout.clipContent) {
     style.overflow = 'hidden';
   }
 

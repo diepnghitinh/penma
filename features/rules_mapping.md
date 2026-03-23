@@ -26,3 +26,15 @@ penma: span text-valign ==> figma: Alignment (top, middle, bottom)
 Render to Figma element keep for span text element
 layoutSizingVertical 
 layoutSizingHorizontal
+
+7.
+import
+penma: position is absolute
+==>
+figma: position X & Y
+
+ const cssPosition = styles['position'];
+  const isAbsolutePositioned = cssPosition === 'absolute' || cssPosition === 'fixed';
+  if (isAbsolutePositioned) {
+    result.layoutPositioning = 'ABSOLUTE';
+  }
