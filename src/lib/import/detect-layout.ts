@@ -150,15 +150,19 @@ export function detectChildSizing(
   let vertical: 'fixed' | 'hug' | 'fill' = 'hug';
 
   if (isParentHoriz) {
+    // Primary axis (horizontal)
     if (flexGrow > 0) horizontal = 'fill';
     else if (width !== 'auto' && !width.includes('%')) horizontal = 'fixed';
-    if (alignSelf === 'stretch' || parentAutoLayout.counterAxisAlign === 'stretch') vertical = 'fill';
-    else if (height !== 'auto' && !height.includes('%')) vertical = 'fixed';
+    // Counter axis (vertical): only fill if child explicitly stretches via align-self
+    if (height !== 'auto' && !height.includes('%')) vertical = 'fixed';
+    else if (alignSelf === 'stretch') vertical = 'fill';
   } else {
+    // Primary axis (vertical)
     if (flexGrow > 0) vertical = 'fill';
     else if (height !== 'auto' && !height.includes('%')) vertical = 'fixed';
-    if (alignSelf === 'stretch' || parentAutoLayout.counterAxisAlign === 'stretch') horizontal = 'fill';
-    else if (width !== 'auto' && !width.includes('%')) horizontal = 'fixed';
+    // Counter axis (horizontal): only fill if child explicitly stretches via align-self
+    if (width !== 'auto' && !width.includes('%')) horizontal = 'fixed';
+    else if (alignSelf === 'stretch') horizontal = 'fill';
   }
 
   if (parentAutoLayout.primaryAxisAlign === 'space-between') {

@@ -103,8 +103,7 @@ export function sizingToChildCSS(
       style.flexShrink = 0;
       break;
     case 'hug':
-      style.width = 'auto';
-      style.flexShrink = 0;
+      style.width = 'fit-content';
       break;
     case 'fill':
       if (isParentHoriz) {
@@ -124,7 +123,7 @@ export function sizingToChildCSS(
       style.flexShrink = 0;
       break;
     case 'hug':
-      style.height = 'auto';
+      style.height = 'fit-content';
       break;
     case 'fill':
       if (!isParentHoriz) {

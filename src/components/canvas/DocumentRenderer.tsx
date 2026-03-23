@@ -180,13 +180,25 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     delete style.flexBasis;
     delete style.alignSelf;
     // Keep width/height only for 'fixed' mode
-    if (node.sizing.horizontal !== 'fixed') {
+    if (node.sizing.horizontal === 'hug') {
       delete style.width;
+      delete style.minWidth;
+      delete style.maxWidth;
+    } else if (node.sizing.horizontal === 'fill') {
+      delete style.width;
+      delete style.minWidth;
+      delete style.maxWidth;
     } else if (!style.width) {
       style.width = `${node.bounds.width}px`;
     }
-    if (node.sizing.vertical !== 'fixed') {
+    if (node.sizing.vertical === 'hug') {
       delete style.height;
+      delete style.minHeight;
+      delete style.maxHeight;
+    } else if (node.sizing.vertical === 'fill') {
+      delete style.height;
+      delete style.minHeight;
+      delete style.maxHeight;
     } else if (!style.height) {
       style.height = `${node.bounds.height}px`;
     }
@@ -216,9 +228,13 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       style.flexShrink = 0;
       style.boxSizing = 'border-box';
     } else if (node.sizing.horizontal === 'hug') {
-      style.width = 'auto';
+      style.width = 'fit-content';
+      delete style.minWidth;
+      delete style.maxWidth;
     } else if (node.sizing.horizontal === 'fill') {
       style.width = '100%';
+      delete style.minWidth;
+      delete style.maxWidth;
       style.boxSizing = 'border-box';
     }
     if (node.sizing.vertical === 'fixed') {
@@ -230,9 +246,13 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       style.flexShrink = 0;
       style.boxSizing = 'border-box';
     } else if (node.sizing.vertical === 'hug') {
-      style.height = 'auto';
+      style.height = 'fit-content';
+      delete style.minHeight;
+      delete style.maxHeight;
     } else if (node.sizing.vertical === 'fill') {
       style.height = '100%';
+      delete style.minHeight;
+      delete style.maxHeight;
       style.boxSizing = 'border-box';
     }
   }

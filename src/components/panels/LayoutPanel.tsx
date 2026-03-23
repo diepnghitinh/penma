@@ -438,8 +438,7 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
     }
     return null;
   })();
-  const parentHasAutoLayout = !!parentNode?.autoLayout;
-  const fillDisabled = !parentHasAutoLayout && !parentDoc;
+  const fillDisabled = !parentNode && !parentDoc;
 
   const resizingPreset = getResizingPreset(hMode, vMode);
 
