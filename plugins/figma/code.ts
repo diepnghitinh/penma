@@ -45,11 +45,36 @@ figma.ui.onmessage = async (msg: { type: string; data: any }) => {
       throw new Error('Unrecognized JSON format. Expected Penma or Figma JSON.');
     }
 
-    // Position on canvas
-    const viewport = figma.viewport.center;
+    // Position on canvas — avoid overlapping existing content
+    const GAP = 100;
+    const existingNodes = figma.currentPage.children;
+    let startX = 0;
+    let startY = 0;
+
+    if (existingNodes.length > 0) {
+      // Find the bounding box of all existing content
+      let maxRight = -Infinity;
+      let minTop = Infinity;
+      for (const existing of existingNodes) {
+        const right = existing.x + existing.width;
+        if (right > maxRight) maxRight = right;
+        if (existing.y < minTop) minTop = existing.y;
+      }
+      // Place new frames to the right of existing content
+      startX = maxRight + GAP;
+      startY = minTop;
+    } else {
+      // No existing content — center on viewport
+      const viewport = figma.viewport.center;
+      startX = viewport.x;
+      startY = viewport.y;
+    }
+
+    let offsetY = startY;
     for (const node of rootNodes) {
-      node.x = viewport.x - node.width / 2;
-      node.y = viewport.y - node.height / 2;
+      node.x = startX;
+      node.y = offsetY;
+      offsetY += node.height + GAP;
       figma.currentPage.appendChild(node);
     }
 
@@ -220,6 +245,26 @@ async function importPenmaNode(penmaNode: any, _parent: FrameNode | null): Promi
         frame.appendChild(wrapper);
       } else {
         frame.appendChild(childNode);
+      }
+
+      // Apply child layout sizing (must be set AFTER appending to auto-layout parent)
+      if (penmaNode.autoLayout && child.sizing) {
+        const targetNode = (hasMargin && penmaNode.autoLayout) ? childNode.parent as SceneNode : childNode;
+        const hMode = child.sizing.horizontal;
+        const vMode = child.sizing.vertical;
+        try {
+          if (hMode === 'hug') (targetNode as any).layoutSizingHorizontal = 'HUG';
+          else if (hMode === 'fill') (targetNode as any).layoutSizingHorizontal = 'FILL';
+          else (targetNode as any).layoutSizingHorizontal = 'FIXED';
+        } catch {}
+        try {
+          if (vMode === 'hug') (targetNode as any).layoutSizingVertical = 'HUG';
+          else if (vMode === 'fill') (targetNode as any).layoutSizingVertical = 'FILL';
+          else (targetNode as any).layoutSizingVertical = 'FIXED';
+        } catch {}
+        try {
+          (targetNode as any).layoutGrow = (hMode === 'fill' || vMode === 'fill') ? 1 : 0;
+        } catch {}
       }
     }
   }
@@ -466,6 +511,23 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
         frame.appendChild(wrapper);
       } else {
         frame.appendChild(childNode);
+      }
+
+      // Apply child layout sizing (must be set AFTER appending to auto-layout parent)
+      if (data.layoutMode) {
+        const targetNode = hasMargin ? childNode.parent as SceneNode : childNode;
+        if (child.layoutSizingHorizontal) {
+          try { (targetNode as any).layoutSizingHorizontal = child.layoutSizingHorizontal; } catch {}
+        }
+        if (child.layoutSizingVertical) {
+          try { (targetNode as any).layoutSizingVertical = child.layoutSizingVertical; } catch {}
+        }
+        if (child.layoutGrow !== undefined) {
+          try { (targetNode as any).layoutGrow = child.layoutGrow; } catch {}
+        }
+        if (child.layoutAlign) {
+          try { (targetNode as any).layoutAlign = child.layoutAlign; } catch {}
+        }
       }
     }
   }
