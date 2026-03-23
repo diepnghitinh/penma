@@ -341,7 +341,6 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const pushHistory = useEditorStore((s) => s.pushHistory);
-  const selectedIds = useEditorStore((s) => s.selectedIds);
   const documents = useEditorStore((s) => s.documents);
 
   const [showConstraints, setShowConstraints] = useState(false);
@@ -349,8 +348,19 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const isAbsolute = node.styles.computed['position'] === 'absolute' || node.styles.computed['position'] === 'fixed'
     || node.styles.overrides['position'] === 'absolute' || node.styles.overrides['position'] === 'fixed';
 
-  const x = Math.round(node.bounds.x);
-  const y = Math.round(node.bounds.y);
+  // Find parent bounds — position X/Y is relative to parent
+  const parentBounds = (() => {
+    for (const doc of documents) {
+      const parent = findParentNode(doc.rootNode, node.id);
+      if (parent) return parent.bounds;
+      if (doc.rootNode.id === node.id) return { x: 0, y: 0, width: doc.viewport.width, height: doc.viewport.height };
+    }
+    return { x: 0, y: 0, width: 0, height: 0 };
+  })();
+
+  // X/Y relative to parent
+  const x = Math.round(node.bounds.x - parentBounds.x);
+  const y = Math.round(node.bounds.y - parentBounds.y);
   const rotation = parseFloat(node.styles.overrides['rotate'] || node.styles.computed['rotate'] || '0') || 0;
 
   // Derive constraints from CSS
@@ -398,13 +408,21 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const handlePositionChange = useCallback((axis: 'x' | 'y', value: number) => {
     pushHistory(`Move ${axis.toUpperCase()}`);
-    updateNodeBounds(node.id, { [axis]: value });
+    // Clamp within parent bounds
+    let clamped = value;
     if (axis === 'x') {
-      updateNodeStyles(node.id, { left: `${value}px` });
+      const maxX = parentBounds.width - node.bounds.width;
+      clamped = Math.max(0, Math.min(maxX, value));
+      // Store absolute bounds, CSS left is relative to parent
+      updateNodeBounds(node.id, { x: parentBounds.x + clamped });
+      updateNodeStyles(node.id, { left: `${clamped}px` });
     } else {
-      updateNodeStyles(node.id, { top: `${value}px` });
+      const maxY = parentBounds.height - node.bounds.height;
+      clamped = Math.max(0, Math.min(maxY, value));
+      updateNodeBounds(node.id, { y: parentBounds.y + clamped });
+      updateNodeStyles(node.id, { top: `${clamped}px` });
     }
-  }, [node.id, updateNodeBounds, updateNodeStyles, pushHistory]);
+  }, [node.id, node.bounds.width, node.bounds.height, parentBounds, updateNodeBounds, updateNodeStyles, pushHistory]);
 
   const handleRotationChange = useCallback((deg: number) => {
     pushHistory('Rotate');
@@ -429,28 +447,22 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
     });
   }, [node.id, node.styles.overrides, updateNodeStyles, pushHistory]);
 
-  // Alignment: align selected node within its parent
+  // Alignment: align selected node within its parent (uses parent-relative coords)
   const handleAlign = useCallback((align: string) => {
-    if (selectedIds.length === 0) return;
-    // Find parent bounds
-    let parentBounds = { x: 0, y: 0, width: 0, height: 0 };
-    for (const doc of documents) {
-      const parent = findParentNode(doc.rootNode, node.id);
-      if (parent) { parentBounds = parent.bounds; break; }
-      if (doc.rootNode.id === node.id) { parentBounds = { x: 0, y: 0, width: doc.viewport.width, height: doc.viewport.height }; break; }
-    }
-
     pushHistory(`Align ${align}`);
     const b = node.bounds;
+    const pb = parentBounds;
+    let relX: number;
+    let relY: number;
     switch (align) {
-      case 'left': updateNodeBounds(node.id, { x: parentBounds.x }); updateNodeStyles(node.id, { left: `${parentBounds.x}px` }); break;
-      case 'center-h': updateNodeBounds(node.id, { x: parentBounds.x + (parentBounds.width - b.width) / 2 }); updateNodeStyles(node.id, { left: `${parentBounds.x + (parentBounds.width - b.width) / 2}px` }); break;
-      case 'right': updateNodeBounds(node.id, { x: parentBounds.x + parentBounds.width - b.width }); updateNodeStyles(node.id, { left: `${parentBounds.x + parentBounds.width - b.width}px` }); break;
-      case 'top': updateNodeBounds(node.id, { y: parentBounds.y }); updateNodeStyles(node.id, { top: `${parentBounds.y}px` }); break;
-      case 'center-v': updateNodeBounds(node.id, { y: parentBounds.y + (parentBounds.height - b.height) / 2 }); updateNodeStyles(node.id, { top: `${parentBounds.y + (parentBounds.height - b.height) / 2}px` }); break;
-      case 'bottom': updateNodeBounds(node.id, { y: parentBounds.y + parentBounds.height - b.height }); updateNodeStyles(node.id, { top: `${parentBounds.y + parentBounds.height - b.height}px` }); break;
+      case 'left': relX = 0; updateNodeBounds(node.id, { x: pb.x }); updateNodeStyles(node.id, { left: '0px' }); break;
+      case 'center-h': relX = Math.round((pb.width - b.width) / 2); updateNodeBounds(node.id, { x: pb.x + relX }); updateNodeStyles(node.id, { left: `${relX}px` }); break;
+      case 'right': relX = pb.width - b.width; updateNodeBounds(node.id, { x: pb.x + relX }); updateNodeStyles(node.id, { left: `${relX}px` }); break;
+      case 'top': relY = 0; updateNodeBounds(node.id, { y: pb.y }); updateNodeStyles(node.id, { top: '0px' }); break;
+      case 'center-v': relY = Math.round((pb.height - b.height) / 2); updateNodeBounds(node.id, { y: pb.y + relY }); updateNodeStyles(node.id, { top: `${relY}px` }); break;
+      case 'bottom': relY = pb.height - b.height; updateNodeBounds(node.id, { y: pb.y + relY }); updateNodeStyles(node.id, { top: `${relY}px` }); break;
     }
-  }, [node.id, node.bounds, selectedIds, documents, updateNodeBounds, updateNodeStyles, pushHistory]);
+  }, [node.id, node.bounds, parentBounds, updateNodeBounds, updateNodeStyles, pushHistory]);
 
   const toggleAbsolute = useCallback(() => {
     pushHistory('Toggle absolute position');

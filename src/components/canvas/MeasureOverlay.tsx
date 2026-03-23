@@ -66,19 +66,20 @@ export const MeasureOverlay: React.FC = () => {
 
     const selRect = selectedEl.getBoundingClientRect();
     const result: MeasureLine[] = [];
+    const zoom = camera.zoom;
 
     // Measure selected element to its parent edges
     const parentEl = selectedEl.parentElement;
     if (parentEl) {
       const parRect = parentEl.getBoundingClientRect();
-      measureToParent(selRect, parRect, result);
+      measureToParent(selRect, parRect, zoom, result);
 
       // Also measure to siblings (nearest in each direction)
-      measureToSiblings(selectedEl, selRect, result);
+      measureToSiblings(selectedEl, selRect, zoom, result);
     }
 
     setLines(result);
-  }, [altHeld, selectedIds, mousePos]);
+  }, [altHeld, selectedIds, mousePos, camera.zoom]);
 
   useEffect(() => {
     if (!altHeld) { setLines([]); return; }
@@ -103,30 +104,27 @@ export const MeasureOverlay: React.FC = () => {
 
 // ── Measurement logic ───────────────────────────────────────
 
-function measureBetweenRects(a: DOMRect, b: DOMRect, out: MeasureLine[]) {
+function measureBetweenRects(a: DOMRect, b: DOMRect, zoom: number, out: MeasureLine[]) {
   const aCx = a.left + a.width / 2;
   const aCy = a.top + a.height / 2;
   const bCx = b.left + b.width / 2;
   const bCy = b.top + b.height / 2;
 
-  // Horizontal distance
+  // Horizontal distance (label shows design-space value, divided by zoom)
   if (a.right < b.left) {
-    // A is left of B
-    const gap = Math.round(b.left - a.right);
+    const gap = Math.round((b.left - a.right) / zoom);
     if (gap > 0) out.push({ x1: a.right, y1: aCy, x2: b.left, y2: aCy, label: `${gap}`, orientation: 'h' });
   } else if (b.right < a.left) {
-    // B is left of A
-    const gap = Math.round(a.left - b.right);
+    const gap = Math.round((a.left - b.right) / zoom);
     if (gap > 0) out.push({ x1: b.right, y1: aCy, x2: a.left, y2: aCy, label: `${gap}`, orientation: 'h' });
   } else {
-    // Overlapping horizontally — show overlap edges
     if (Math.abs(a.left - b.left) > 1) {
-      const d = Math.round(Math.abs(a.left - b.left));
+      const d = Math.round(Math.abs(a.left - b.left) / zoom);
       const y = Math.min(a.top, b.top) - 12;
       out.push({ x1: Math.min(a.left, b.left), y1: y, x2: Math.max(a.left, b.left), y2: y, label: `${d}`, orientation: 'h' });
     }
     if (Math.abs(a.right - b.right) > 1) {
-      const d = Math.round(Math.abs(a.right - b.right));
+      const d = Math.round(Math.abs(a.right - b.right) / zoom);
       const y = Math.max(a.bottom, b.bottom) + 12;
       out.push({ x1: Math.min(a.right, b.right), y1: y, x2: Math.max(a.right, b.right), y2: y, label: `${d}`, orientation: 'h' });
     }
@@ -134,27 +132,26 @@ function measureBetweenRects(a: DOMRect, b: DOMRect, out: MeasureLine[]) {
 
   // Vertical distance
   if (a.bottom < b.top) {
-    const gap = Math.round(b.top - a.bottom);
+    const gap = Math.round((b.top - a.bottom) / zoom);
     if (gap > 0) out.push({ x1: aCx, y1: a.bottom, x2: aCx, y2: b.top, label: `${gap}`, orientation: 'v' });
   } else if (b.bottom < a.top) {
-    const gap = Math.round(a.top - b.bottom);
+    const gap = Math.round((a.top - b.bottom) / zoom);
     if (gap > 0) out.push({ x1: bCx, y1: b.bottom, x2: bCx, y2: a.top, label: `${gap}`, orientation: 'v' });
   } else {
-    // Overlapping vertically
     if (Math.abs(a.top - b.top) > 1) {
-      const d = Math.round(Math.abs(a.top - b.top));
+      const d = Math.round(Math.abs(a.top - b.top) / zoom);
       const x = Math.min(a.left, b.left) - 12;
       out.push({ x1: x, y1: Math.min(a.top, b.top), x2: x, y2: Math.max(a.top, b.top), label: `${d}`, orientation: 'v' });
     }
     if (Math.abs(a.bottom - b.bottom) > 1) {
-      const d = Math.round(Math.abs(a.bottom - b.bottom));
+      const d = Math.round(Math.abs(a.bottom - b.bottom) / zoom);
       const x = Math.max(a.right, b.right) + 12;
       out.push({ x1: x, y1: Math.min(a.bottom, b.bottom), x2: x, y2: Math.max(a.bottom, b.bottom), label: `${d}`, orientation: 'v' });
     }
   }
 }
 
-function measureToSiblings(el: Element, selRect: DOMRect, out: MeasureLine[]) {
+function measureToSiblings(el: Element, selRect: DOMRect, zoom: number, out: MeasureLine[]) {
   const parent = el.parentElement;
   if (!parent) return;
 
@@ -164,7 +161,6 @@ function measureToSiblings(el: Element, selRect: DOMRect, out: MeasureLine[]) {
   const cx = selRect.left + selRect.width / 2;
   const cy = selRect.top + selRect.height / 2;
 
-  // Find nearest sibling in each direction
   let nearestLeft: { el: Element; dist: number } | null = null;
   let nearestRight: { el: Element; dist: number } | null = null;
   let nearestTop: { el: Element; dist: number } | null = null;
@@ -172,65 +168,46 @@ function measureToSiblings(el: Element, selRect: DOMRect, out: MeasureLine[]) {
 
   for (const sib of siblings) {
     const r = sib.getBoundingClientRect();
-
-    // Left neighbor
-    if (r.right <= selRect.left) {
-      const d = selRect.left - r.right;
-      if (!nearestLeft || d < nearestLeft.dist) nearestLeft = { el: sib, dist: d };
-    }
-    // Right neighbor
-    if (r.left >= selRect.right) {
-      const d = r.left - selRect.right;
-      if (!nearestRight || d < nearestRight.dist) nearestRight = { el: sib, dist: d };
-    }
-    // Top neighbor
-    if (r.bottom <= selRect.top) {
-      const d = selRect.top - r.bottom;
-      if (!nearestTop || d < nearestTop.dist) nearestTop = { el: sib, dist: d };
-    }
-    // Bottom neighbor
-    if (r.top >= selRect.bottom) {
-      const d = r.top - selRect.bottom;
-      if (!nearestBottom || d < nearestBottom.dist) nearestBottom = { el: sib, dist: d };
-    }
+    if (r.right <= selRect.left) { const d = selRect.left - r.right; if (!nearestLeft || d < nearestLeft.dist) nearestLeft = { el: sib, dist: d }; }
+    if (r.left >= selRect.right) { const d = r.left - selRect.right; if (!nearestRight || d < nearestRight.dist) nearestRight = { el: sib, dist: d }; }
+    if (r.bottom <= selRect.top) { const d = selRect.top - r.bottom; if (!nearestTop || d < nearestTop.dist) nearestTop = { el: sib, dist: d }; }
+    if (r.top >= selRect.bottom) { const d = r.top - selRect.bottom; if (!nearestBottom || d < nearestBottom.dist) nearestBottom = { el: sib, dist: d }; }
   }
 
+  // Labels show design-space distances (divided by zoom)
   if (nearestLeft && nearestLeft.dist > 0) {
     const r = nearestLeft.el.getBoundingClientRect();
-    out.push({ x1: r.right, y1: cy, x2: selRect.left, y2: cy, label: `${Math.round(nearestLeft.dist)}`, orientation: 'h' });
+    out.push({ x1: r.right, y1: cy, x2: selRect.left, y2: cy, label: `${Math.round(nearestLeft.dist / zoom)}`, orientation: 'h' });
   }
   if (nearestRight && nearestRight.dist > 0) {
     const r = nearestRight.el.getBoundingClientRect();
-    out.push({ x1: selRect.right, y1: cy, x2: r.left, y2: cy, label: `${Math.round(nearestRight.dist)}`, orientation: 'h' });
+    out.push({ x1: selRect.right, y1: cy, x2: r.left, y2: cy, label: `${Math.round(nearestRight.dist / zoom)}`, orientation: 'h' });
   }
   if (nearestTop && nearestTop.dist > 0) {
     const r = nearestTop.el.getBoundingClientRect();
-    out.push({ x1: cx, y1: r.bottom, x2: cx, y2: selRect.top, label: `${Math.round(nearestTop.dist)}`, orientation: 'v' });
+    out.push({ x1: cx, y1: r.bottom, x2: cx, y2: selRect.top, label: `${Math.round(nearestTop.dist / zoom)}`, orientation: 'v' });
   }
   if (nearestBottom && nearestBottom.dist > 0) {
     const r = nearestBottom.el.getBoundingClientRect();
-    out.push({ x1: cx, y1: selRect.bottom, x2: cx, y2: r.top, label: `${Math.round(nearestBottom.dist)}`, orientation: 'v' });
+    out.push({ x1: cx, y1: selRect.bottom, x2: cx, y2: r.top, label: `${Math.round(nearestBottom.dist / zoom)}`, orientation: 'v' });
   }
 }
 
-function measureToParent(child: DOMRect, parent: DOMRect, out: MeasureLine[]) {
+function measureToParent(child: DOMRect, parent: DOMRect, zoom: number, out: MeasureLine[]) {
   const cx = child.left + child.width / 2;
   const cy = child.top + child.height / 2;
 
-  // Top
-  const top = Math.round(child.top - parent.top);
+  // Labels show design-space distances (divided by zoom)
+  const top = Math.round((child.top - parent.top) / zoom);
   if (top > 0) out.push({ x1: cx, y1: parent.top, x2: cx, y2: child.top, label: `${top}`, orientation: 'v' });
 
-  // Bottom
-  const bottom = Math.round(parent.bottom - child.bottom);
+  const bottom = Math.round((parent.bottom - child.bottom) / zoom);
   if (bottom > 0) out.push({ x1: cx, y1: child.bottom, x2: cx, y2: parent.bottom, label: `${bottom}`, orientation: 'v' });
 
-  // Left
-  const left = Math.round(child.left - parent.left);
+  const left = Math.round((child.left - parent.left) / zoom);
   if (left > 0) out.push({ x1: parent.left, y1: cy, x2: child.left, y2: cy, label: `${left}`, orientation: 'h' });
 
-  // Right
-  const right = Math.round(parent.right - child.right);
+  const right = Math.round((parent.right - child.right) / zoom);
   if (right > 0) out.push({ x1: child.right, y1: cy, x2: parent.right, y2: cy, label: `${right}`, orientation: 'h' });
 }
 

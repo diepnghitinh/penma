@@ -209,22 +209,21 @@ export const StylePanel: React.FC = () => {
         )}
       </div>
 
-      {/* Position panel — alignment, X/Y, rotation */}
-      {!isInstance && <PositionPanel node={selectedNode} />}
-
-      {/* Layout panel (includes auto layout toggle) */}
-      {isInstance ? (
-        <div className="border-b border-neutral-100 px-3 py-2">
-          <div className="flex gap-3 text-[10px] text-neutral-400">
-            <span>W {Math.round(selectedNode.bounds.width)}</span>
-            <span>H {Math.round(selectedNode.bounds.height)}</span>
-          </div>
-        </div>
-      ) : (
-        <LayoutPanel node={selectedNode} />
-      )}
-
       <div className="flex-1 overflow-y-auto">
+        {/* Position panel — alignment, X/Y, rotation */}
+        {!isInstance && <PositionPanel node={selectedNode} />}
+
+        {/* Layout panel (includes auto layout toggle) */}
+        {isInstance ? (
+          <div className="border-b border-neutral-100 px-3 py-2">
+            <div className="flex gap-3 text-[10px] text-neutral-400">
+              <span>W {Math.round(selectedNode.bounds.width)}</span>
+              <span>H {Math.round(selectedNode.bounds.height)}</span>
+            </div>
+          </div>
+        ) : (
+          <LayoutPanel node={selectedNode} />
+        )}
 
         {Object.entries(STYLE_CATEGORIES)
           .filter(([category]) => {
