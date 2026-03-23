@@ -1,6 +1,5 @@
 import type { PenmaDocument, PenmaNode } from '@/types/document';
 import { getEffectiveStyles } from '@/lib/styles/style-resolver';
-import { debugLog } from '@/lib/utils/debug-log';
 
 /**
  * Converts a PenmaDocument (or subtree) into a Figma-compatible JSON structure.
@@ -135,6 +134,11 @@ interface FigmaTextStyle {
 export function documentToFigmaJson(doc: PenmaDocument): object {
   const rootFigmaNode = convertNode(doc.rootNode, doc.canvasX, doc.canvasY);
 
+  // Design System frame: arrange children for clean vertical layout
+  if (doc.rootNode.attributes?.class === 'design-system-frame') {
+    arrangeDesignSystemFrame(rootFigmaNode);
+  }
+
   // Collect all image and SVG references from the tree
   const images: Record<string, string> = {};
   const svgs: Record<string, string> = {};
@@ -167,6 +171,89 @@ export function documentToFigmaJson(doc: PenmaDocument): object {
       viewport: doc.viewport,
     },
   };
+}
+
+/**
+ * Arrange children of a "Design System" frame with clean vertical layout.
+ * Ensures auto layout, resets child positions, and makes descendant bounds relative.
+ */
+function arrangeDesignSystemFrame(frame: FigmaNode): void {
+  if (!frame.children || frame.children.length === 0) return;
+
+  const PADDING = 40;
+  const GAP = 32;
+
+  // Ensure the frame has vertical auto layout
+  if (!frame.layoutMode) {
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisSizingMode = 'AUTO';
+    frame.counterAxisSizingMode = 'AUTO';
+    frame.primaryAxisAlignItems = 'MIN';
+    frame.counterAxisAlignItems = 'MIN';
+    frame.paddingTop = PADDING;
+    frame.paddingRight = PADDING;
+    frame.paddingBottom = PADDING;
+    frame.paddingLeft = PADDING;
+    frame.itemSpacing = GAP;
+    frame.clipsContent = false;
+  }
+
+  for (const child of frame.children) {
+    // Reset position — auto layout handles placement
+    child.absoluteBoundingBox = {
+      x: 0, y: 0,
+      width: child.absoluteBoundingBox.width,
+      height: child.absoluteBoundingBox.height,
+    };
+
+    // Ensure component has auto layout for its own children
+    if (child.children && child.children.length > 0 && !child.layoutMode) {
+      child.layoutMode = 'VERTICAL';
+      child.primaryAxisSizingMode = 'AUTO';
+      child.counterAxisSizingMode = 'AUTO';
+      child.primaryAxisAlignItems = 'MIN';
+      child.counterAxisAlignItems = 'MIN';
+      child.itemSpacing = 0;
+      child.paddingTop = 0;
+      child.paddingRight = 0;
+      child.paddingBottom = 0;
+      child.paddingLeft = 0;
+    }
+
+    // Make all descendant bounds relative to their direct parent
+    if (child.children) {
+      recalcChildBounds(child);
+    }
+  }
+
+  // Recalculate frame size
+  let maxW = 0;
+  let totalH = 0;
+  for (const child of frame.children) {
+    if (child.absoluteBoundingBox.width > maxW) maxW = child.absoluteBoundingBox.width;
+    totalH += child.absoluteBoundingBox.height;
+  }
+  if (frame.children.length > 1) totalH += GAP * (frame.children.length - 1);
+  frame.absoluteBoundingBox = {
+    ...frame.absoluteBoundingBox,
+    width: Math.max(frame.absoluteBoundingBox.width, maxW + PADDING * 2),
+    height: Math.max(frame.absoluteBoundingBox.height, totalH + PADDING * 2),
+  };
+}
+
+/** Recursively make children's absoluteBoundingBox relative to their parent. */
+function recalcChildBounds(parent: FigmaNode): void {
+  if (!parent.children) return;
+  const px = parent.absoluteBoundingBox.x;
+  const py = parent.absoluteBoundingBox.y;
+  for (const child of parent.children) {
+    child.absoluteBoundingBox = {
+      ...child.absoluteBoundingBox,
+      x: child.absoluteBoundingBox.x - px,
+      y: child.absoluteBoundingBox.y - py,
+    };
+    if (child.children) recalcChildBounds(child);
+  }
 }
 
 /** Recursively collect image URLs and SVG data from the Figma node tree */
