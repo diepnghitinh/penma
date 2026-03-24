@@ -125,8 +125,9 @@ function parseColorToHex(color: string): string {
 export const StylePanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const activePageId = useEditorStore((s) => s.activePageId);
 
-  // Find the document containing the selected node
+  // Find the document containing the selected node (scoped to active page)
   const document = (() => {
     if (selectedIds.length === 0) return null;
     for (const doc of documents) {
@@ -134,6 +135,8 @@ export const StylePanel: React.FC = () => {
     }
     return null;
   })();
+  // activePageId ensures re-render on page switch
+  void activePageId;
 
   if (!document || selectedIds.length === 0) {
     // No selection — show export for the active frame if available

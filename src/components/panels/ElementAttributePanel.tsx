@@ -1,15 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
 import type { PenmaNode } from '@/types/document';
 
+/** CSS properties to include when copying all CSS */
+const CSS_PROPS = [
+  'width', 'height', 'display', 'position', 'overflow', 'opacity',
+  'font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'color',
+  'background-color', 'border-radius',
+  'border-top-width', 'border-top-style', 'border-top-color',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+];
+
 /** Read-only panel showing element attributes in view mode */
 export const ElementAttributePanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const activePageId = useEditorStore((s) => s.activePageId);
+  const [copied, setCopied] = useState(false);
 
   const document = (() => {
     if (selectedIds.length === 0) return null;
@@ -18,11 +30,26 @@ export const ElementAttributePanel: React.FC = () => {
     }
     return null;
   })();
+  // activePageId ensures re-render on page switch
+  void activePageId;
 
   if (!document || selectedIds.length === 0) return null;
 
   const selectedNode = findNodeById(document.rootNode, selectedIds[0]);
   if (!selectedNode) return null;
+
+  const handleCopyCss = () => {
+    const lines: string[] = [];
+    for (const prop of CSS_PROPS) {
+      const val = getEffectiveStyle(selectedNode.styles, prop);
+      if (val && val !== 'initial' && val !== 'none' && val !== '0px' && val !== 'normal' && val !== 'static' && val !== 'visible') {
+        lines.push(`${prop}: ${val};`);
+      }
+    }
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -37,8 +64,33 @@ export const ElementAttributePanel: React.FC = () => {
         >
           Inspect
         </span>
-        <span className="ml-auto text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
-          &lt;{selectedNode.tagName}&gt;
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleCopyCss}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer"
+            style={{
+              color: copied ? 'var(--penma-success, #22c55e)' : 'var(--penma-text-muted)',
+              background: copied ? 'rgba(34,197,94,0.08)' : 'transparent',
+              border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'var(--penma-border)'}`,
+              transition: 'all 150ms',
+            }}
+            title="Copy all CSS properties"
+          >
+            {copied ? (
+              <>
+                <CheckIcon />
+                Copied
+              </>
+            ) : (
+              <>
+                <CopyIcon />
+                Copy CSS
+              </>
+            )}
+          </button>
+          <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+            &lt;{selectedNode.tagName}&gt;
+          </span>
         </span>
       </div>
 
@@ -56,7 +108,15 @@ export const ElementAttributePanel: React.FC = () => {
         </div>
 
         {/* Position & Size */}
-        <AttrSection title="Position & Size">
+        <AttrSection
+          title="Position & Size"
+          cssEntries={[
+            ['left', `${Math.round(selectedNode.bounds.x)}px`],
+            ['top', `${Math.round(selectedNode.bounds.y)}px`],
+            ['width', `${Math.round(selectedNode.bounds.width)}px`],
+            ['height', `${Math.round(selectedNode.bounds.height)}px`],
+          ]}
+        >
           <AttrRow label="X" value={`${Math.round(selectedNode.bounds.x)}`} />
           <AttrRow label="Y" value={`${Math.round(selectedNode.bounds.y)}`} />
           <AttrRow label="W" value={`${Math.round(selectedNode.bounds.width)}`} />
@@ -100,8 +160,16 @@ const TypographySection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const letterSpacing = getEffectiveStyle(node.styles, 'letter-spacing') || '';
   const color = getEffectiveStyle(node.styles, 'color') || '';
 
+  const entries: [string, string][] = [];
+  if (fontFamily) entries.push(['font-family', fontFamily]);
+  if (fontSize) entries.push(['font-size', fontSize]);
+  if (fontWeight) entries.push(['font-weight', fontWeight]);
+  if (lineHeight) entries.push(['line-height', lineHeight]);
+  if (letterSpacing && letterSpacing !== 'normal') entries.push(['letter-spacing', letterSpacing]);
+  if (color) entries.push(['color', color]);
+
   return (
-    <AttrSection title="Typography">
+    <AttrSection title="Typography" cssEntries={entries}>
       {fontFamily && <AttrRow label="Font" value={fontFamily.split(',')[0].replace(/['"]/g, '')} />}
       {fontSize && <AttrRow label="Size" value={fontSize} />}
       {fontWeight && <AttrRow label="Weight" value={fontWeight} />}
@@ -117,7 +185,7 @@ const FillSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   if (!bgColor || bgColor === 'transparent' || bgColor === 'rgba(0, 0, 0, 0)') return null;
 
   return (
-    <AttrSection title="Fill">
+    <AttrSection title="Fill" cssEntries={[['background-color', bgColor]]}>
       <AttrRow label="Background" value={bgColor} colorPreview />
     </AttrSection>
   );
@@ -131,8 +199,12 @@ const StrokeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const bs = getEffectiveStyle(node.styles, 'border-top-style') || '';
   if (bs === 'none') return null;
 
+  const entries: [string, string][] = [['border-width', bw]];
+  if (bc) entries.push(['border-color', bc]);
+  if (bs) entries.push(['border-style', bs]);
+
   return (
-    <AttrSection title="Stroke">
+    <AttrSection title="Stroke" cssEntries={entries}>
       <AttrRow label="Width" value={bw} />
       {bc && <AttrRow label="Color" value={bc} colorPreview />}
       {bs && <AttrRow label="Style" value={bs} />}
@@ -150,8 +222,15 @@ const LayoutSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const hasContent = display || position || overflow || opacity || borderRadius;
   if (!hasContent) return null;
 
+  const entries: [string, string][] = [];
+  if (display) entries.push(['display', display]);
+  if (position && position !== 'static') entries.push(['position', position]);
+  if (overflow && overflow !== 'visible') entries.push(['overflow', overflow]);
+  if (opacity && opacity !== '1') entries.push(['opacity', opacity]);
+  if (borderRadius && borderRadius !== '0px') entries.push(['border-radius', borderRadius]);
+
   return (
-    <AttrSection title="Layout">
+    <AttrSection title="Layout" cssEntries={entries}>
       {display && <AttrRow label="Display" value={display} />}
       {position && position !== 'static' && <AttrRow label="Position" value={position} />}
       {overflow && overflow !== 'visible' && <AttrRow label="Overflow" value={overflow} />}
@@ -163,26 +242,51 @@ const LayoutSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
 // ── Shared primitives ────────────────────────────────────────
 
-const AttrSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+const AttrSection: React.FC<{ title: string; children: React.ReactNode; cssEntries?: [string, string][] }> = ({ title, children, cssEntries }) => {
   const [expanded, setExpanded] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!cssEntries || cssEntries.length === 0) return;
+    const text = cssEntries.map(([p, v]) => `${p}: ${v};`).join('\n');
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }, [cssEntries]);
 
   return (
     <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
-      <button
-        className="flex h-8 w-full items-center gap-1.5 px-3 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <svg
-          width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
-          strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
-          style={{ color: 'var(--penma-text-muted)', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}
+      <div className="group/section flex h-8 items-center gap-1.5 px-3">
+        <button
+          className="flex flex-1 items-center gap-1.5 cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
         >
-          <path d="M3.5 2L6.5 5L3.5 8" />
-        </svg>
-        <span className="text-[11px] font-semibold" style={{ color: 'var(--penma-text-muted)' }}>
-          {title}
-        </span>
-      </button>
+          <svg
+            width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
+            strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: 'var(--penma-text-muted)', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}
+          >
+            <path d="M3.5 2L6.5 5L3.5 8" />
+          </svg>
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--penma-text-muted)' }}>
+            {title}
+          </span>
+        </button>
+        {cssEntries && cssEntries.length > 0 && (
+          <button
+            onClick={handleCopy}
+            className="shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium cursor-pointer opacity-0 group-hover/section:opacity-100"
+            style={{
+              color: copied ? 'var(--penma-success, #22c55e)' : 'var(--penma-text-muted)',
+              transition: 'opacity 100ms',
+            }}
+            title="Copy CSS for this section"
+          >
+            {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> CSS</>}
+          </button>
+        )}
+      </div>
       {expanded && <div className="px-3 pb-2">{children}</div>}
     </div>
   );
@@ -234,3 +338,18 @@ const AttrRow: React.FC<{ label: string; value: string; colorPreview?: boolean }
     </div>
   );
 };
+
+// ── Inline SVG icons ─────────────────────────────────────────
+
+const CopyIcon: React.FC = () => (
+  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+    <path d="M8 4V2.5A1 1 0 007 1.5H2.5A1 1 0 001.5 2.5V7A1 1 0 002.5 8H4" />
+  </svg>
+);
+
+const CheckIcon: React.FC = () => (
+  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 6.5L5 9L9.5 3" />
+  </svg>
+);

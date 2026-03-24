@@ -14,8 +14,11 @@ export const AutoLayoutOverlay: React.FC = () => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
+  const activePageId = useEditorStore((s) => s.activePageId);
   const document = documents.find((d) => d.id === activeDocumentId) ?? documents[0] ?? null;
   const camera = useEditorStore((s) => s.camera);
+  // activePageId ensures re-render on page switch
+  void activePageId;
 
   const [overlayData, setOverlayData] = useState<{
     paddingRects: { x: number; y: number; w: number; h: number }[];

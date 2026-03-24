@@ -189,9 +189,12 @@ const LayerItem: React.FC<LayerItemProps> = ({ node, depth, expanded }) => {
 export const LayerPanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
+  const activePageId = useEditorStore((s) => s.activePageId);
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
   const removeDocument = useEditorStore((s) => s.removeDocument);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  // activePageId ensures re-render on page switch
+  void activePageId;
   const expanded = useExpandedState();
   const prevSelectedRef = useRef<string[]>([]);
 

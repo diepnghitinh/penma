@@ -22,6 +22,9 @@ export const SelectionOverlay: React.FC = () => {
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const documents = useEditorStore((s) => s.documents);
+  const activePageId = useEditorStore((s) => s.activePageId);
+  // activePageId ensures re-render on page switch
+  void activePageId;
 
   const [selectionBoxes, setSelectionBoxes] = useState<SelectionBox[]>([]);
   const [hoverBox, setHoverBox] = useState<Rect | null>(null);
