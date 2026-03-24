@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapePage } from '@/lib/import/scrape-page';
 import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
+import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
+import type { AssetReference } from '@/types/document';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
   // ── Non-streaming import ────────────────────────────────────
 
   try {
-    const serializedTree = await scrapePage({
+    const { tree: serializedTree, fonts: extractedFonts } = await scrapePage({
       url: parsedUrl,
       viewportWidth,
       viewportHeight,
@@ -47,6 +49,21 @@ export async function POST(request: NextRequest) {
       parsedUrl.toString(),
       { width: viewportWidth, height: viewportHeight },
     );
+
+    // Download and store fonts in MongoDB
+    const storedFonts = await downloadAndStoreFonts(extractedFonts, parsedUrl.toString());
+    const assets: Record<string, AssetReference> = {};
+    for (const sf of storedFonts) {
+      assets[`font-${sf.id}`] = {
+        originalUrl: sf.family,
+        proxyUrl: sf.serveUrl,
+        type: 'font',
+        fontWeight: sf.weight,
+        fontStyle: sf.style,
+        fontFormat: sf.format,
+      };
+    }
+    doc.assets = assets;
 
     return NextResponse.json({ success: true, document: doc });
   } catch (error) {
@@ -71,14 +88,14 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
       }
 
       try {
-        const serializedTree = await scrapePage({
+        const { tree: serializedTree, fonts: extractedFonts } = await scrapePage({
           url: parsedUrl,
           viewportWidth,
           viewportHeight,
           onProgress: (percent, step) => send('progress', { percent, step }),
         });
 
-        send('progress', { percent: 80, step: 'Processing nodes...' });
+        send('progress', { percent: 82, step: 'Processing nodes...' });
         send('progress', { percent: 85, step: 'Detecting layouts...' });
 
         const doc = buildPenmaDocument(
@@ -87,7 +104,25 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
           { width: viewportWidth, height: viewportHeight },
         );
 
-        send('progress', { percent: 90, step: 'Building design tree...' });
+        // Download and store fonts in MongoDB
+        if (extractedFonts.length > 0) {
+          send('progress', { percent: 88, step: `Downloading ${extractedFonts.length} fonts...` });
+          const storedFonts = await downloadAndStoreFonts(
+            extractedFonts,
+            parsedUrl.toString(),
+            (msg) => send('progress', { percent: 90, step: msg }),
+          );
+          const assets: Record<string, AssetReference> = {};
+          for (const sf of storedFonts) {
+            assets[`font-${sf.id}`] = {
+              originalUrl: sf.family,
+              proxyUrl: sf.serveUrl,
+              type: 'font',
+            };
+          }
+          doc.assets = assets;
+        }
+
         send('progress', { percent: 95, step: 'Finalizing...' });
         send('progress', { percent: 100, step: 'Done!' });
 

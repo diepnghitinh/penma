@@ -23,7 +23,8 @@
       "Bash(grep -c '\"\"svgData\"\"' \"/Users/dntmaster/Downloads/mvp-v3-linkadz-ai \\(2\\).json\")",
       "Bash(xargs ls:*)",
       "Bash(find /Volumes/DEVELOP/GITHUB/html2design/src -type f \\\\\\(-name *.ts -o -name *.tsx \\\\\\))",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(ls -la src/lib/db/models/font.ts src/lib/import/extract-fonts.ts src/app/api/fonts/[id]/route.ts src/components/canvas/FontLoader.tsx)"
     ]
   }
 }

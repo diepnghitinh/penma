@@ -37,7 +37,20 @@ export interface ScrapeOptions {
   onProgress?: (percent: number, step: string) => void;
 }
 
-export async function scrapePage(opts: ScrapeOptions): Promise<SerializedNode> {
+export interface ExtractedFontFace {
+  family: string;
+  weight: string;
+  style: string;
+  url: string;
+  format: string;
+}
+
+export interface ScrapeResult {
+  tree: SerializedNode;
+  fonts: ExtractedFontFace[];
+}
+
+export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
   const { url, viewportWidth, viewportHeight, onProgress } = opts;
   const progress = onProgress ?? (() => {});
 
@@ -216,7 +229,60 @@ export async function scrapePage(opts: ScrapeOptions): Promise<SerializedNode> {
       throw new Error('Failed to extract page content');
     }
 
-    return serializedTree as SerializedNode;
+    // ── Extract @font-face declarations from all stylesheets ──
+    progress(78, 'Extracting fonts...');
+    const extractedFonts = await page.evaluate((evalPageUrl: string) => {
+      const fonts: { family: string; weight: string; style: string; url: string; format: string }[] = [];
+      try {
+        for (const sheet of Array.from(document.styleSheets)) {
+          let rules: CSSRuleList;
+          try { rules = sheet.cssRules; } catch { continue; } // CORS-blocked sheets
+          for (const rule of Array.from(rules)) {
+            if (rule instanceof CSSFontFaceRule) {
+              const family = rule.style.getPropertyValue('font-family').replace(/['"]/g, '').trim();
+              const weight = rule.style.getPropertyValue('font-weight') || '400';
+              const fontStyle = rule.style.getPropertyValue('font-style') || 'normal';
+              const src = rule.style.getPropertyValue('src') || '';
+
+              // Parse url() references from src — prefer woff2, then woff, then others
+              const urlMatches = [...src.matchAll(/url\(["']?([^"')]+)["']?\)\s*format\(["']?([^"')]+)["']?\)/g)];
+              const plainUrls = [...src.matchAll(/url\(["']?([^"')]+)["']?\)/g)];
+
+              let bestUrl = '';
+              let bestFormat = '';
+
+              // Prioritize woff2 > woff > others
+              for (const m of urlMatches) {
+                const fmt = m[2].toLowerCase();
+                if (fmt === 'woff2' || fmt.includes('woff2')) { bestUrl = m[1]; bestFormat = 'font/woff2'; break; }
+                if (!bestUrl && (fmt === 'woff' || fmt.includes('woff'))) { bestUrl = m[1]; bestFormat = 'font/woff'; }
+                if (!bestUrl) { bestUrl = m[1]; bestFormat = `font/${fmt}`; }
+              }
+
+              // Fallback: plain url() without format()
+              if (!bestUrl && plainUrls.length > 0) {
+                bestUrl = plainUrls[0][1];
+                const ext = bestUrl.split(/[?#]/)[0].split('.').pop()?.toLowerCase() || '';
+                bestFormat = ext === 'woff2' ? 'font/woff2' : ext === 'woff' ? 'font/woff' : ext === 'ttf' ? 'font/ttf' : 'font/woff2';
+              }
+
+              if (bestUrl && family && !bestUrl.startsWith('data:')) {
+                // Resolve relative URL
+                try {
+                  bestUrl = new URL(bestUrl, evalPageUrl).toString();
+                } catch {}
+                fonts.push({ family, weight, style: fontStyle, url: bestUrl, format: bestFormat });
+              }
+            }
+          }
+        }
+      } catch {}
+      return fonts;
+    }, pageUrl);
+
+    progress(80, `Found ${extractedFonts.length} font faces`);
+
+    return { tree: serializedTree as SerializedNode, fonts: extractedFonts };
   } finally {
     await browser.close();
   }

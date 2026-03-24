@@ -4,6 +4,7 @@ import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { getCanvasTransform } from '@/lib/canvas/coordinates';
 import { DocumentRenderer } from './DocumentRenderer';
+import { FontLoader } from './FontLoader';
 import { SelectionOverlay } from './SelectionOverlay';
 import { AutoLayoutOverlay } from './AutoLayoutOverlay';
 import { MeasureOverlay } from './MeasureOverlay';
@@ -275,6 +276,9 @@ export const Canvas: React.FC = () => {
       <ShapeCreator canvasRef={canvasRef} />
       <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
+
+      {/* Load imported web fonts */}
+      <FontLoader />
 
       {/* Figma-style bottom toolbar */}
       <BottomToolbar />

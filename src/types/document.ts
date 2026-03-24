@@ -112,4 +112,10 @@ export interface AssetReference {
   originalUrl: string;
   proxyUrl: string;
   type: 'image' | 'font' | 'stylesheet' | 'other';
+  /** Font-specific: weight (e.g. "400", "700") */
+  fontWeight?: string;
+  /** Font-specific: style (e.g. "normal", "italic") */
+  fontStyle?: string;
+  /** Font-specific: MIME format (e.g. "font/woff2") */
+  fontFormat?: string;
 }
