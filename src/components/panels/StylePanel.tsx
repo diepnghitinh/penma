@@ -11,6 +11,7 @@ import { PositionPanel } from './PositionPanel';
 import { LayoutPanel } from './LayoutPanel';
 import { TypographyPanel } from './TypographyPanel';
 import { ExportPanel } from './ExportPanel';
+import { DocumentSizePanel } from './DocumentSizePanel';
 import type { PenmaNode, PenmaFill } from '@/types/document';
 
 interface StyleSectionProps {
@@ -139,17 +140,27 @@ export const StylePanel: React.FC = () => {
   void activePageId;
 
   if (!document || selectedIds.length === 0) {
-    // No selection — show export for the active frame if available
+    // No selection — show document size controls + export
     if (documents.length > 0) {
       return (
         <div className="flex h-full flex-col">
           <div className="flex h-9 items-center px-3" style={{ borderBottom: '1px solid var(--penma-border)' }}>
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)', fontFamily: 'var(--font-heading)' }}>
-              Export
+              Document
             </span>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-3 penma-scrollbar">
-            <ExportPanel />
+          <div className="flex-1 overflow-y-auto penma-scrollbar">
+            <DocumentSizePanel />
+            <div style={{ borderTop: '1px solid var(--penma-border)' }}>
+              <div className="px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)', fontFamily: 'var(--font-heading)' }}>
+                  Export
+                </span>
+              </div>
+              <div className="px-3 pb-3">
+                <ExportPanel />
+              </div>
+            </div>
           </div>
         </div>
       );
