@@ -14,7 +14,7 @@ import { ResizablePanel } from '@/components/ui/ResizablePanel';
 import { PageTabs } from '@/components/toolbar/PageTabs';
 import { CanvasContextMenu } from '@/components/canvas/ContextMenu';
 
-export const EditorShell: React.FC = () => {
+export const EditorShell: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
   const openPanels = useEditorStore((s) => s.openPanels);
 
   // Global keyboard shortcuts
@@ -27,7 +27,29 @@ export const EditorShell: React.FC = () => {
       return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement).isContentEditable;
     };
 
-    const unsubscribe = tinykeys(window, {
+    // In read-only mode, only allow view shortcuts (zoom, pan, escape)
+    const shortcuts: Record<string, (e: KeyboardEvent) => void> = readOnly ? {
+      'Escape': () => { useEditorStore.getState().clearSelection(); },
+      '$mod+0': (e) => { e.preventDefault(); useEditorStore.getState().resetView(); },
+      '$mod+Equal': (e) => { e.preventDefault(); useEditorStore.getState().zoomIn(); },
+      '$mod+Minus': (e) => { e.preventDefault(); useEditorStore.getState().zoomOut(); },
+      'Shift+1': () => {
+        if (isInputFocused()) return;
+        const state = useEditorStore.getState();
+        if (state.documents.length === 0) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const d of state.documents) {
+          minX = Math.min(minX, d.canvasX);
+          minY = Math.min(minY, d.canvasY);
+          maxX = Math.max(maxX, d.canvasX + d.viewport.width);
+          maxY = Math.max(maxY, d.canvasY + d.viewport.height);
+        }
+        const canvas = document.querySelector('.penma-canvas');
+        const vw = canvas?.clientWidth ?? window.innerWidth;
+        const vh = canvas?.clientHeight ?? window.innerHeight;
+        state.fitToScreen({ width: maxX - minX, height: maxY - minY }, { width: vw, height: vh });
+      },
+    } : {
       'v': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('select'); },
       'h': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('hand'); },
       'f': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('frame'); },
@@ -37,39 +59,39 @@ export const EditorShell: React.FC = () => {
       'o': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('ellipse'); },
       'p': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('pen'); },
       't': () => { if (!isInputFocused()) useEditorStore.getState().setActiveTool('text'); },
-      '$mod+z': (e: KeyboardEvent) => {
+      '$mod+z': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().undo();
       },
-      '$mod+Shift+z': (e: KeyboardEvent) => {
+      '$mod+Shift+z': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().redo();
       },
-      '$mod+c': (e: KeyboardEvent) => {
+      '$mod+c': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().copyNodes();
       },
-      '$mod+x': (e: KeyboardEvent) => {
+      '$mod+x': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().cutNodes();
       },
-      '$mod+v': (e: KeyboardEvent) => {
+      '$mod+v': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         useEditorStore.getState().pasteNodes();
       },
-      '$mod+d': (e: KeyboardEvent) => {
+      '$mod+d': (e) => {
         if (isInputFocused()) return;
         e.preventDefault();
         const state = useEditorStore.getState();
         state.copyNodes();
         state.pasteNodes();
       },
-      '$mod+i': (e: KeyboardEvent) => {
+      '$mod+i': (e) => {
         e.preventDefault();
         useEditorStore.getState().setShowImportDialog(true);
       },
@@ -105,15 +127,15 @@ export const EditorShell: React.FC = () => {
           state.removeDocument(state.activeDocumentId);
         }
       },
-      '$mod+0': (e: KeyboardEvent) => {
+      '$mod+0': (e) => {
         e.preventDefault();
         useEditorStore.getState().resetView();
       },
-      '$mod+Equal': (e: KeyboardEvent) => {
+      '$mod+Equal': (e) => {
         e.preventDefault();
         useEditorStore.getState().zoomIn();
       },
-      '$mod+Minus': (e: KeyboardEvent) => {
+      '$mod+Minus': (e) => {
         e.preventDefault();
         useEditorStore.getState().zoomOut();
       },
@@ -133,10 +155,11 @@ export const EditorShell: React.FC = () => {
         const vh = canvas?.clientHeight ?? window.innerHeight;
         state.fitToScreen({ width: maxX - minX, height: maxY - minY }, { width: vw, height: vh });
       },
-    });
+    };
 
+    const unsubscribe = tinykeys(window, shortcuts);
     return unsubscribe;
-  }, []);
+  }, [readOnly]);
 
   // Disable browser back/forward swipe gesture (macOS trackpad)
   useEffect(() => {
@@ -171,12 +194,27 @@ export const EditorShell: React.FC = () => {
 
   return (
     <div className="penma-editor flex h-screen flex-col select-none" style={{ background: 'var(--penma-bg)' }}>
-      <TopToolbar />
-      <PageTabs />
+      {!readOnly && <TopToolbar />}
+      <PageTabs readOnly={readOnly} />
+
+      {/* Read-only banner */}
+      {readOnly && (
+        <div
+          className="flex h-10 items-center justify-center gap-2 text-xs font-medium shrink-0"
+          style={{ background: 'var(--penma-primary-light)', color: 'var(--penma-primary)', borderBottom: '1px solid var(--penma-border)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="7" cy="7" r="5.5" />
+            <line x1="7" y1="4" x2="7" y2="7.5" />
+            <circle cx="7" cy="9.5" r="0.5" fill="currentColor" />
+          </svg>
+          View only — this is a shared public link
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: Layers — resizable */}
-        {showLayers && (
+        {!readOnly && showLayers && (
           <ResizablePanel side="left" defaultWidth={240} minWidth={180} maxWidth={400}>
             <LayerPanel />
           </ResizablePanel>
@@ -186,7 +224,7 @@ export const EditorShell: React.FC = () => {
         <Canvas />
 
         {/* Right panels */}
-        {(showStyles || showDesignSystem) && (
+        {!readOnly && (showStyles || showDesignSystem) && (
           <ResizablePanel side="right" defaultWidth={288} minWidth={240} maxWidth={480}>
             {showStyles && showDesignSystem ? (
               <RightPanelTabs />
@@ -199,9 +237,9 @@ export const EditorShell: React.FC = () => {
         )}
       </div>
 
-      {/* Dialogs */}
-      <ImportUrlDialog />
-      <CanvasContextMenu />
+      {/* Dialogs (only in edit mode) */}
+      {!readOnly && <ImportUrlDialog />}
+      {!readOnly && <CanvasContextMenu />}
     </div>
   );
 };

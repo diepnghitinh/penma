@@ -6,6 +6,7 @@ import type { PenmaPage } from './pages-slice';
 export interface ProjectSlice {
   projectId: string | null;
   projectName: string;
+  publicShareId: string | null;
   isSaving: boolean;
   lastSavedAt: Date | null;
   isDirty: boolean;
@@ -24,6 +25,7 @@ export const createProjectSlice: StateCreator<
 > = (set, get) => ({
   projectId: null,
   projectName: 'Untitled',
+  publicShareId: null,
   isSaving: false,
   lastSavedAt: null,
   isDirty: false,
@@ -49,6 +51,7 @@ export const createProjectSlice: StateCreator<
       // Project metadata
       projectId: data.id,
       projectName: data.name,
+      publicShareId: data.publicShareId ?? null,
       isDirty: false,
       lastSavedAt: new Date(data.updatedAt),
       // All pages with their full state

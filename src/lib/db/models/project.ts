@@ -12,6 +12,8 @@ export interface IProjectPage {
 export interface IProject extends Document {
   name: string;
   pages: IProjectPage[];
+  /** Random token for public read-only sharing (null = not shared) */
+  publicShareId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +22,7 @@ const ProjectSchema = new Schema(
   {
     name: { type: String, required: true },
     pages: { type: Schema.Types.Mixed, default: [] },
+    publicShareId: { type: String, default: null, index: true, sparse: true },
   },
   { timestamps: true, strict: false }
 );

@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, FileText, Pencil } from 'lucide-react';
+import { Plus, Trash2, FileText, Pencil, Link, Link2Off, Check } from 'lucide-react';
 
 interface ProjectSummary {
   id: string;
   name: string;
   updatedAt: string;
   pageCount: number;
+  publicShareId: string | null;
 }
 
 export const ProjectList: React.FC = () => {
@@ -74,6 +75,45 @@ export const ProjectList: React.FC = () => {
       prev.map((p) => (p.id === id ? { ...p, name: trimmed } : p))
     );
     setEditingId(null);
+  };
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleToggleShare = async (e: React.MouseEvent, project: ProjectSummary) => {
+    e.stopPropagation();
+    const enable = !project.publicShareId;
+
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toggleShare: enable }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === project.id ? { ...p, publicShareId: data.publicShareId } : p
+        )
+      );
+
+      // Copy the public link to clipboard when enabling
+      if (data.publicShareId) {
+        const link = `${window.location.origin}/view/${data.publicShareId}`;
+        navigator.clipboard.writeText(link);
+        setCopiedId(project.id);
+        setTimeout(() => setCopiedId(null), 1500);
+      }
+    }
+  };
+
+  const handleCopyLink = (e: React.MouseEvent, project: ProjectSummary) => {
+    e.stopPropagation();
+    if (!project.publicShareId) return;
+    const link = `${window.location.origin}/view/${project.publicShareId}`;
+    navigator.clipboard.writeText(link);
+    setCopiedId(project.id);
+    setTimeout(() => setCopiedId(null), 1500);
   };
 
   const formatDate = (dateStr: string) => {
@@ -223,6 +263,49 @@ export const ProjectList: React.FC = () => {
 
                 {/* Action buttons */}
                 <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100" style={{ transition: 'var(--transition-base)' }}>
+                  {project.publicShareId ? (
+                    /* "Public" tag — click to copy link */
+                    <button
+                      onClick={(e) => handleCopyLink(e, project)}
+                      className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium cursor-pointer"
+                      style={{
+                        background: copiedId === project.id ? '#DCFCE7' : 'var(--penma-primary-light)',
+                        color: copiedId === project.id ? '#16A34A' : 'var(--penma-primary)',
+                        transition: 'var(--transition-base)',
+                      }}
+                      title={copiedId === project.id ? 'Copied!' : 'Copy public link'}
+                    >
+                      {copiedId === project.id ? <Check size={12} /> : <Link size={12} />}
+                      {copiedId === project.id ? 'Copied!' : 'Public'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => handleToggleShare(e, project)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md cursor-pointer"
+                      style={{
+                        background: 'var(--penma-bg)',
+                        color: 'var(--penma-text-muted)',
+                        transition: 'var(--transition-base)',
+                      }}
+                      title="Create public link"
+                    >
+                      <Link size={14} />
+                    </button>
+                  )}
+                  {project.publicShareId && (
+                    <button
+                      onClick={(e) => handleToggleShare(e, project)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md cursor-pointer"
+                      style={{
+                        background: 'var(--penma-bg)',
+                        color: 'var(--penma-text-muted)',
+                        transition: 'var(--transition-base)',
+                      }}
+                      title="Disable public link"
+                    >
+                      <Link2Off size={14} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

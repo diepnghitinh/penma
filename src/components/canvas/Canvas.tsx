@@ -17,6 +17,7 @@ import { ShapeCreator } from './ShapeCreator';
 export const Canvas: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
   const pan = useEditorStore((s) => s.pan);
+  const editEnabled = useEditorStore((s) => s.editEnabled);
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
@@ -273,7 +274,7 @@ export const Canvas: React.FC = () => {
 
       <AutoLayoutOverlay />
       <MeasureOverlay />
-      <ShapeCreator canvasRef={canvasRef} />
+      {editEnabled && <ShapeCreator canvasRef={canvasRef} />}
       <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
 

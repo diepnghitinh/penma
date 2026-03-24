@@ -17,6 +17,7 @@ import {
   Unlink,
   CopyCheck,
   LocateFixed,
+  Link,
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById, flattenTree } from '@/lib/utils/tree-utils';
@@ -310,7 +311,32 @@ export const CanvasContextMenu: React.FC = () => {
 
         <MenuDivider />
 
-        <MenuItem icon={Copy} label="Copy CSS" onClick={handleCopyStyles} />
+        {/* Share submenu */}
+        <div
+          className="relative"
+          onMouseEnter={() => setSubMenu('share')}
+          onMouseLeave={() => setSubMenu(null)}
+        >
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 cursor-pointer"
+            style={{ transition: 'var(--transition-fast)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Link size={14} style={{ color: 'var(--penma-text-secondary)' }} />
+            <span className="text-[11px] flex-1" style={{ color: 'var(--penma-text)' }}>Copy / Share</span>
+            <ChevronRight size={12} style={{ color: 'var(--penma-text-muted)' }} />
+          </div>
+
+          {subMenu === 'share' && (
+            <ShareSubMenu
+              nodeId={menu.nodeId}
+              node={targetNode}
+              close={close}
+            />
+          )}
+        </div>
+
         <MenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={handleDelete} />
       </div>
     </>
@@ -346,6 +372,83 @@ const MenuItem: React.FC<{
 const MenuDivider: React.FC = () => (
   <div className="my-1" style={{ borderTop: '1px solid var(--penma-border)' }} />
 );
+
+// ── Share sub-menu ──────────────────────────────────────────
+
+const ShareSubMenu: React.FC<{
+  nodeId: string;
+  node: ReturnType<typeof findNodeById> | null;
+  close: () => void;
+}> = ({ nodeId, node, close }) => {
+  const [copied, setCopied] = React.useState<string | null>(null);
+  const publicShareId = useEditorStore((s) => s.publicShareId);
+
+  const copyAndFlash = (label: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => { setCopied(null); close(); }, 800);
+  };
+
+  const editorLink = `${window.location.origin}${window.location.pathname}#${nodeId}`;
+  const publicLink = publicShareId
+    ? `${window.location.origin}/view/${publicShareId}#${nodeId}`
+    : null;
+
+  // Build CSS string
+  const cssText = (() => {
+    const el = document.querySelector(`[data-penma-id="${nodeId}"]`) as HTMLElement | null;
+    if (!el) return '';
+    const cs = window.getComputedStyle(el);
+    const props = ['color', 'background-color', 'font-size', 'font-weight', 'font-family', 'line-height', 'letter-spacing', 'border-radius', 'padding', 'margin', 'width', 'height'];
+    return props.map((p) => `${p}: ${cs.getPropertyValue(p)};`).join('\n');
+  })();
+
+  const items: { label: string; value: string; icon: React.ElementType }[] = [
+    { label: 'Editor link', value: editorLink, icon: Link },
+  ];
+
+  if (publicLink) {
+    items.push({ label: 'Public link', value: publicLink, icon: Link });
+  }
+
+  items.push(
+    { label: 'Element ID', value: nodeId, icon: Copy },
+    { label: 'Element name', value: node?.name || node?.tagName || nodeId, icon: Copy },
+    { label: 'CSS styles', value: cssText, icon: Copy },
+  );
+
+  return (
+    <div
+      className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
+      style={{
+        background: 'var(--penma-surface)',
+        borderColor: 'var(--penma-border)',
+        minWidth: 180,
+        zIndex: 'var(--z-modal)',
+      }}
+    >
+      {items.map((item) => {
+        const isCopied = copied === item.label;
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.label}
+            className="flex w-full items-center gap-2 px-3 py-1.5 cursor-pointer text-left"
+            style={{ transition: 'var(--transition-fast)' }}
+            onClick={() => copyAndFlash(item.label, item.value)}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Icon size={14} style={{ color: isCopied ? '#16A34A' : 'var(--penma-text-secondary)' }} />
+            <span className="text-[11px] flex-1" style={{ color: isCopied ? '#16A34A' : 'var(--penma-text)' }}>
+              {isCopied ? 'Copied!' : item.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 // ── Helper ──────────────────────────────────────────────────
 

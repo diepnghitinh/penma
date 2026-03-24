@@ -10,6 +10,7 @@ export async function GET() {
   const projects = await Project.find({}, {
     name: 1,
     updatedAt: 1,
+    publicShareId: 1,
     'pages._id': 1,
     'pages.name': 1,
   })
@@ -21,6 +22,7 @@ export async function GET() {
     name: p.name,
     updatedAt: p.updatedAt,
     pageCount: p.pages?.length ?? 0,
+    publicShareId: p.publicShareId ?? null,
   }));
 
   return NextResponse.json(result);

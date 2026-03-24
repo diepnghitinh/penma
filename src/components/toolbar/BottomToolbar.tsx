@@ -164,29 +164,44 @@ const ToolDropdown: React.FC<{
 
 // ── Main bottom toolbar ─────────────────────────────────────
 
+const VIEW_ONLY_GROUPS: ToolGroup[] = [
+  {
+    items: [
+      { id: 'select', icon: MousePointer2, label: 'Move', shortcut: 'V' },
+      { id: 'hand', icon: Hand, label: 'Hand tool', shortcut: 'H' },
+    ],
+  },
+];
+
 export const BottomToolbar: React.FC = () => {
   const activeTool = useEditorStore((s) => s.activeTool);
   const setActiveTool = useEditorStore((s) => s.setActiveTool);
+  const editEnabled = useEditorStore((s) => s.editEnabled);
   const [openGroup, setOpenGroup] = useState<number | null>(null);
+
+  const toolGroups = editEnabled ? TOOL_GROUPS : VIEW_ONLY_GROUPS;
 
   // Track last selected sub-tool per group
   const [selectedPerGroup, setSelectedPerGroup] = useState<Record<number, number>>({});
 
   useEffect(() => {
-    TOOL_GROUPS.forEach((group, gi) => {
+    toolGroups.forEach((group, gi) => {
       const idx = group.items.findIndex((item) => item.id === activeTool);
       if (idx >= 0) {
-        setSelectedPerGroup((prev) => ({ ...prev, [gi]: idx }));
+        setSelectedPerGroup((prev) => {
+          if (prev[gi] === idx) return prev;
+          return { ...prev, [gi]: idx };
+        });
       }
     });
-  }, [activeTool]);
+  }, [activeTool, editEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGroupClick = useCallback((gi: number) => {
-    const group = TOOL_GROUPS[gi];
+    const group = toolGroups[gi];
     const selectedIdx = selectedPerGroup[gi] || 0;
     setActiveTool(group.items[selectedIdx].id);
     setOpenGroup(null);
-  }, [selectedPerGroup, setActiveTool]);
+  }, [selectedPerGroup, setActiveTool, editEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -216,7 +231,7 @@ export const BottomToolbar: React.FC = () => {
         zIndex: 'var(--z-toolbar)',
       }}
     >
-      {TOOL_GROUPS.map((group, gi) => {
+      {toolGroups.map((group, gi) => {
         const selectedIdx = selectedPerGroup[gi] || 0;
         const activeItem = group.items[selectedIdx];
         const isGroupActive = group.items.some((item) => item.id === activeTool);

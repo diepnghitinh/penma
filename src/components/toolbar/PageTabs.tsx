@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus, X, Copy, MoreHorizontal } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 
-export const PageTabs: React.FC = () => {
+export const PageTabs: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
   const pages = useEditorStore((s) => s.pages);
   const activePageId = useEditorStore((s) => s.activePageId);
   const addPage = useEditorStore((s) => s.addPage);
@@ -71,8 +71,8 @@ export const PageTabs: React.FC = () => {
               transition: 'var(--transition-fast)',
             }}
             onClick={() => switchPage(pageId)}
-            onDoubleClick={() => startRename(pageId, page.name)}
-            onContextMenu={(e) => {
+            onDoubleClick={readOnly ? undefined : () => startRename(pageId, page.name)}
+            onContextMenu={readOnly ? (e) => e.preventDefault() : (e) => {
               e.preventDefault();
               setContextMenuId(pageId);
               setContextPos({ x: e.clientX, y: e.clientY });
@@ -102,8 +102,8 @@ export const PageTabs: React.FC = () => {
               </span>
             )}
 
-            {/* Close button — only on hover, not for last page */}
-            {pages.length > 1 && !isEditing && (
+            {/* Close button — only on hover, not for last page, hidden in read-only */}
+            {!readOnly && pages.length > 1 && !isEditing && (
               <button
                 className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 cursor-pointer"
                 style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-fast)' }}
@@ -122,18 +122,20 @@ export const PageTabs: React.FC = () => {
         );
       })}
 
-      {/* Add page button */}
-      <button
-        className="flex h-6 w-6 items-center justify-center rounded flex-shrink-0 cursor-pointer"
-        style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-fast)' }}
-        onClick={() => addPage()}
-        title="Add page"
-      >
-        <Plus size={14} />
-      </button>
+      {/* Add page button — hidden in read-only */}
+      {!readOnly && (
+        <button
+          className="flex h-6 w-6 items-center justify-center rounded flex-shrink-0 cursor-pointer"
+          style={{ color: 'var(--penma-text-muted)', transition: 'var(--transition-fast)' }}
+          onClick={() => addPage()}
+          title="Add page"
+        >
+          <Plus size={14} />
+        </button>
+      )}
 
-      {/* Context menu */}
-      {contextMenuId && (
+      {/* Context menu — hidden in read-only */}
+      {!readOnly && contextMenuId && (
         <div
           ref={menuRef}
           className="fixed rounded-lg shadow-lg border py-1"

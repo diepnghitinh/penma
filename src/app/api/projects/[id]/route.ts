@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { connectDB } from '@/lib/db/connection';
 import { Project } from '@/lib/db/models/project';
 
@@ -29,6 +30,7 @@ export async function GET(
     id: project._id.toString(),
     name: project.name,
     pages,
+    publicShareId: project.publicShareId ?? null,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   });
@@ -62,7 +64,7 @@ export async function PUT(
   }
 }
 
-// PATCH /api/projects/[id] — Rename project
+// PATCH /api/projects/[id] — Update project (rename, toggle share)
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -71,17 +73,29 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const project = await Project.findByIdAndUpdate(
-    id,
-    { name: body.name },
-    { new: true }
-  );
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined) updates.name = body.name;
+
+  // Toggle public sharing
+  if (body.toggleShare !== undefined) {
+    if (body.toggleShare) {
+      updates.publicShareId = crypto.randomBytes(12).toString('hex');
+    } else {
+      updates.publicShareId = null;
+    }
+  }
+
+  const project = await Project.findByIdAndUpdate(id, updates, { new: true });
 
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true, name: project.name });
+  return NextResponse.json({
+    success: true,
+    name: project.name,
+    publicShareId: project.publicShareId ?? null,
+  });
 }
 
 // DELETE /api/projects/[id] — Delete project

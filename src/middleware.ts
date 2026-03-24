@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/view', '/api/public'];
 const SESSION_SECRET = process.env.SESSION_SECRET || 'penma-default-secret-change-me';
 
 function verifyToken(token: string): boolean {
