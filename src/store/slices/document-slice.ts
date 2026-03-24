@@ -3,7 +3,7 @@ import { produce } from 'immer';
 import { v4 as uuid } from 'uuid';
 import type { PenmaDocument, PenmaNode, AutoLayout, PenmaFill } from '@/types/document';
 import { DEFAULT_AUTO_LAYOUT, DEFAULT_SIZING } from '@/types/document';
-import { updateNodeById, findNodeById, findParentNode, flattenTree } from '@/lib/utils/tree-utils';
+import { updateNodeById, findNodeById, findParentNode, flattenTree, getAncestorIds } from '@/lib/utils/tree-utils';
 import type { EditorState } from '../editor-store';
 
 export interface DocumentSlice {
@@ -60,36 +60,113 @@ export interface DocumentSlice {
 /**
  * Helper: apply a mutation to whichever document contains the given nodeId.
  * Returns the updated documents array.
- * If the mutated node is a master component, syncs all instances.
+ * If the mutated node is inside a master component, syncs all instances.
  */
 function mutateNodeInDocs(
   docs: PenmaDocument[],
   nodeId: string,
   mutator: (draft: PenmaDocument) => void
 ): PenmaDocument[] {
-  let mutatedNode: PenmaNode | null = null;
+  let shouldSync = false;
   const result = docs.map((doc) => {
     if (findNodeById(doc.rootNode, nodeId)) {
       const updated = produce(doc, mutator);
-      mutatedNode = findNodeById(updated.rootNode, nodeId);
+      // Check if mutated node is a master root or inside a master component
+      const node = findNodeById(updated.rootNode, nodeId);
+      if (node?.componentId) {
+        shouldSync = true;
+      } else {
+        // Check ancestors — if any ancestor has componentId, this node is inside a master
+        const ancestors = getAncestorIds(updated.rootNode, nodeId);
+        for (const aid of ancestors) {
+          const a = findNodeById(updated.rootNode, aid);
+          if (a?.componentId) { shouldSync = true; break; }
+        }
+      }
       return updated;
     }
     return doc;
   });
-  // If we mutated a master component, sync all its instances
-  if (mutatedNode && (mutatedNode as PenmaNode).componentId) {
+  if (shouldSync) {
     return syncComponentInstances(result);
   }
   return result;
 }
 
+/** Sync a single node from master, preserving bounds and position overrides */
+function syncNodeFromMaster(target: PenmaNode, master: PenmaNode): void {
+  const savedBounds = { ...target.bounds };
+  const positionOverrides: Record<string, string> = {};
+  const POS_KEYS = ['position', 'top', 'left', 'right', 'bottom', 'z-index', 'transform'];
+  for (const key of POS_KEYS) {
+    if (key in target.styles.overrides) positionOverrides[key] = target.styles.overrides[key];
+  }
+  target.tagName = master.tagName;
+  target.attributes = { ...master.attributes };
+  target.textContent = master.textContent;
+  target.rawHtml = master.rawHtml;
+  target.styles = {
+    computed: { ...master.styles.computed },
+    overrides: { ...master.styles.overrides, ...positionOverrides },
+  };
+  target.bounds = savedBounds;
+  target.visible = master.visible;
+  target.autoLayout = master.autoLayout
+    ? { ...master.autoLayout, padding: { ...master.autoLayout.padding } }
+    : undefined;
+  target.sizing = master.sizing ? { ...master.sizing } : undefined;
+  target.fills = master.fills ? master.fills.map(f => ({ ...f })) : undefined;
+  target.name = master.name;
+}
+
 /**
- * After mutating a master component node, sync all instances (nodes with
- * matching componentRef) to mirror the master's content.
- * Preserves each instance's own id, position (bounds), and componentRef.
+ * Recursively merge master children into instance children.
+ * - Match by sourceNodeId
+ * - Overridden nodes (edited by user) are kept as-is
+ * - Non-overridden nodes are synced from master, then recurse into children
+ */
+function mergeChildren(
+  masterChildren: PenmaNode[],
+  instanceChildren: PenmaNode[],
+  overriddenIds: Set<string>,
+): PenmaNode[] {
+  const bySource = new Map<string, PenmaNode>();
+  for (const c of instanceChildren) {
+    if (c.sourceNodeId) bySource.set(c.sourceNodeId, c);
+  }
+
+  const result: PenmaNode[] = [];
+  for (const mc of masterChildren) {
+    const ic = bySource.get(mc.id);
+    if (!ic) {
+      // New in master — clone it
+      result.push(cloneNodeWithNewIds(mc));
+      continue;
+    }
+    if (overriddenIds.has(ic.id)) {
+      // User edited this node — keep it entirely as-is
+      result.push(ic);
+      continue;
+    }
+    // Not overridden — sync properties from master, then recurse children
+    syncNodeFromMaster(ic, mc);
+    ic.children = mergeChildren(mc.children, ic.children, overriddenIds);
+    result.push(ic);
+  }
+  // Keep overridden nodes whose master counterpart was removed
+  for (const ic of instanceChildren) {
+    if (overriddenIds.has(ic.id) && !result.some(r => r.id === ic.id)) {
+      result.push(ic);
+    }
+  }
+  return result;
+}
+
+/**
+ * After mutating a master component node, sync all instances.
+ * Uses recursive merge so edited descendant nodes inside instances are preserved.
  */
 function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
-  // Collect all master components (nodes with componentId)
   const masters = new Map<string, PenmaNode>();
   for (const doc of docs) {
     for (const node of flattenTree(doc.rootNode)) {
@@ -98,7 +175,6 @@ function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
   }
   if (masters.size === 0) return docs;
 
-  // Find and update all instances
   let changed = false;
   const result = docs.map((doc) => {
     const instances: { nodeId: string; compId: string }[] = [];
@@ -115,34 +191,15 @@ function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
         updateNodeById(draft.rootNode, nodeId, (instance) => {
           const master = masters.get(compId);
           if (!master) return;
-          // Sync content from master, preserving instance's own position
-          const savedBounds = { ...instance.bounds };
-          const positionOverrides: Record<string, string> = {};
-          const POSITION_KEYS = ['position', 'top', 'left', 'right', 'bottom', 'z-index', 'transform'];
-          for (const key of POSITION_KEYS) {
-            if (key in instance.styles.overrides) {
-              positionOverrides[key] = instance.styles.overrides[key];
-            }
+          const overriddenIds = new Set(instance.instanceOverrides ?? []);
+
+          // Sync instance root (unless the root itself was overridden)
+          if (!overriddenIds.has(instance.id)) {
+            syncNodeFromMaster(instance, master);
           }
 
-          instance.tagName = master.tagName;
-          instance.attributes = { ...master.attributes };
-          instance.textContent = master.textContent;
-          instance.rawHtml = master.rawHtml;
-          instance.styles = {
-            computed: { ...master.styles.computed },
-            overrides: { ...master.styles.overrides, ...positionOverrides },
-          };
-          instance.bounds = savedBounds;
-          instance.visible = master.visible;
-          instance.autoLayout = master.autoLayout
-            ? { ...master.autoLayout, padding: { ...master.autoLayout.padding } }
-            : undefined;
-          instance.sizing = master.sizing ? { ...master.sizing } : undefined;
-          instance.fills = master.fills ? master.fills.map(f => ({ ...f })) : undefined;
-          instance.name = master.name;
-          // Deep-clone children from master with fresh IDs
-          instance.children = master.children.map((c) => cloneNodeWithNewIds(c));
+          // Recursively merge children
+          instance.children = mergeChildren(master.children, instance.children, overriddenIds);
         });
       }
     });
@@ -150,13 +207,36 @@ function syncComponentInstances(docs: PenmaDocument[]): PenmaDocument[] {
   return changed ? result : docs;
 }
 
-/** Check if a node is a component instance (ref) — instances are not directly editable */
-function isInstanceNode(docs: PenmaDocument[], nodeId: string): boolean {
-  for (const doc of docs) {
-    const node = findNodeById(doc.rootNode, nodeId);
-    if (node) return !!node.componentRef;
+/** Find the nearest ancestor component instance root for a node */
+function findInstanceRoot(doc: PenmaDocument, nodeId: string): PenmaNode | null {
+  const node = findNodeById(doc.rootNode, nodeId);
+  if (node?.componentRef) return node;
+  const ancestors = getAncestorIds(doc.rootNode, nodeId);
+  for (const aid of ancestors) {
+    const a = findNodeById(doc.rootNode, aid);
+    if (a?.componentRef) return a;
   }
-  return false;
+  return null;
+}
+
+/** Mark a node as overridden on its ancestor instance root */
+function markInstanceOverride(docs: PenmaDocument[], nodeId: string): PenmaDocument[] {
+  let instRootId: string | null = null;
+  for (const doc of docs) {
+    const root = findInstanceRoot(doc, nodeId);
+    if (root) { instRootId = root.id; break; }
+  }
+  if (!instRootId) return docs;
+  return docs.map((doc) => {
+    if (!findNodeById(doc.rootNode, instRootId!)) return doc;
+    return produce(doc, (draft) => {
+      updateNodeById(draft.rootNode, instRootId!, (inst) => {
+        const s = new Set(inst.instanceOverrides ?? []);
+        s.add(nodeId);
+        inst.instanceOverrides = [...s];
+      });
+    });
+  });
 }
 
 const FRAME_GAP = 80; // px between frames on canvas
@@ -283,51 +363,32 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeStyles: (nodeId, overrides) =>
     set((state) => {
-      const isInstance = isInstanceNode(state.documents, nodeId);
-      if (isInstance) {
-        // Instances only allow position-related style overrides
-        const POSITION_KEYS = new Set(['position', 'top', 'left', 'right', 'bottom', 'z-index', 'transform']);
-        const allowed: Record<string, string> = {};
-        for (const [key, value] of Object.entries(overrides)) {
-          if (POSITION_KEYS.has(key)) allowed[key] = value;
-        }
-        if (Object.keys(allowed).length === 0) return state;
-        return {
-          documents: state.documents.map((doc) => {
-            if (!findNodeById(doc.rootNode, nodeId)) return doc;
-            return produce(doc, (draft) => {
-              updateNodeById(draft.rootNode, nodeId, (node) => {
-                Object.assign(node.styles.overrides, allowed);
-              });
-            });
-          }),
-        };
-      }
-      return {
-        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-          updateNodeById(draft.rootNode, nodeId, (node) => {
-            Object.assign(node.styles.overrides, overrides);
-          });
-        }),
-      };
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          Object.assign(node.styles.overrides, overrides);
+        });
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
     }),
 
   updateNodeText: (nodeId, text) =>
     set((state) => {
-      if (isInstanceNode(state.documents, nodeId)) return state;
-      return {
-        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-          updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
-        }),
-      };
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
     }),
 
   toggleNodeVisibility: (nodeId) =>
-    set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+    set((state) => {
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.visible = !node.visible; });
-      }),
-    })),
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
+    }),
 
   toggleNodeLock: (nodeId) =>
     set((state) => ({
@@ -337,26 +398,19 @@ export const createDocumentSlice: StateCreator<
     })),
 
   renameNode: (nodeId, name) =>
-    set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+    set((state) => {
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.name = name; });
-      }),
-    })),
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
+    }),
 
   updateNodeBounds: (nodeId, bounds) =>
     set((state) => ({
-      // Bounds changes are always allowed (including on component instances)
-      // Use direct produce for instances to avoid triggering component sync
-      documents: isInstanceNode(state.documents, nodeId)
-        ? state.documents.map((doc) => {
-            if (!findNodeById(doc.rootNode, nodeId)) return doc;
-            return produce(doc, (draft) => {
-              updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
-            });
-          })
-        : mutateNodeInDocs(state.documents, nodeId, (draft) => {
-            updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
-          }),
+      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
+      }),
     })),
 
   addNodeToActiveDocument: (node) =>
@@ -536,14 +590,13 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeFills: (nodeId, fills) =>
     set((state) => {
-      if (isInstanceNode(state.documents, nodeId)) return state;
-      return {
-        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-          updateNodeById(draft.rootNode, nodeId, (node) => {
-            node.fills = fills;
-          });
-        }),
-      };
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          node.fills = fills;
+        });
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
     }),
 
   updateDocumentPosition: (docId, canvasX, canvasY) =>
@@ -647,26 +700,24 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeAttributes: (nodeId, attributes) =>
     set((state) => {
-      if (isInstanceNode(state.documents, nodeId)) return state;
-      return {
-        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-          updateNodeById(draft.rootNode, nodeId, (node) => {
-            Object.assign(node.attributes, attributes);
-          });
-        }),
-      };
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          Object.assign(node.attributes, attributes);
+        });
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
     }),
 
   removeNodeAttribute: (nodeId, key) =>
     set((state) => {
-      if (isInstanceNode(state.documents, nodeId)) return state;
-      return {
-        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-          updateNodeById(draft.rootNode, nodeId, (node) => {
-            delete node.attributes[key];
-          });
-        }),
-      };
+      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+        updateNodeById(draft.rootNode, nodeId, (node) => {
+          delete node.attributes[key];
+        });
+      });
+      docs = markInstanceOverride(docs, nodeId);
+      return { documents: docs };
     }),
 
   isComponentRef: (nodeId) => {
@@ -679,11 +730,13 @@ export const createDocumentSlice: StateCreator<
   },
 });
 
-/** Deep-clone a node tree, assigning fresh IDs to every node */
+/** Deep-clone a node tree, assigning fresh IDs. Sets sourceNodeId to map back to master. */
 function cloneNodeWithNewIds(node: PenmaNode): PenmaNode {
   return {
     ...node,
     id: uuid(),
+    sourceNodeId: node.sourceNodeId ?? node.id,
+    instanceOverrides: undefined,
     children: node.children.map((c) => cloneNodeWithNewIds(c)),
     styles: {
       computed: { ...node.styles.computed },

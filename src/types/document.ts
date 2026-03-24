@@ -31,6 +31,10 @@ export interface PenmaNode {
   componentId?: string;
   /** Points to a master component's componentId — this node is an instance (ref) */
   componentRef?: string;
+  /** Maps this cloned node back to the master node it was cloned from */
+  sourceNodeId?: string;
+  /** On instance root: IDs of descendant nodes edited by user — these skip master sync */
+  instanceOverrides?: string[];
 }
 
 // ── Auto Layout (Figma-style) ──────────────────────────────
