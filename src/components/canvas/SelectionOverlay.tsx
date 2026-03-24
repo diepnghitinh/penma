@@ -339,8 +339,12 @@ const SizeLabel: React.FC<{ rect: Rect }> = ({ rect }) => {
 
   return (
     <div
-      className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-white pointer-events-none"
-      style={{ background: 'var(--penma-primary)' }}
+      className="absolute left-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-white pointer-events-none"
+      style={{
+        background: 'var(--penma-primary)',
+        bottom: -20,
+        transform: 'translateX(-50%)',
+      }}
     >
       {fmt(w)} × {fmt(h)}
     </div>

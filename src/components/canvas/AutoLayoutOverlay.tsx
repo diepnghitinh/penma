@@ -171,7 +171,7 @@ export const AutoLayoutOverlay: React.FC = () => {
         const lineClass = isSB ? 'bg-green-400/40' : 'bg-blue-400/40';
         const textClass = isSB ? 'text-green-600' : 'text-blue-500';
         const isWide = r.w > r.h;
-        const size = Math.round(isWide ? r.w : r.h);
+        const size = Math.round((isWide ? r.w : r.h) / camera.zoom);
 
         return (
           <div

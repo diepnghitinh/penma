@@ -24,7 +24,8 @@
       "Bash(xargs ls:*)",
       "Bash(find /Volumes/DEVELOP/GITHUB/html2design/src -type f \\\\\\(-name *.ts -o -name *.tsx \\\\\\))",
       "Bash(node:*)",
-      "Bash(ls -la src/lib/db/models/font.ts src/lib/import/extract-fonts.ts src/app/api/fonts/[id]/route.ts src/components/canvas/FontLoader.tsx)"
+      "Bash(ls -la src/lib/db/models/font.ts src/lib/import/extract-fonts.ts src/app/api/fonts/[id]/route.ts src/components/canvas/FontLoader.tsx)",
+      "Bash(grep -r \"pixel\\\\|rendered\\\\|scaled\\\\|transform\" /Volumes/DEVELOP/GITHUB/html2design/src/components/canvas/*.tsx)"
     ]
   }
 }

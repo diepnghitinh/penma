@@ -15,7 +15,9 @@ import {
   Check,
   Loader2,
   Circle,
+  Plus,
 } from 'lucide-react';
+import { v4 as uuid } from 'uuid';
 import { useEditorStore } from '@/store/editor-store';
 import { EditSettingsPopover } from './EditSettingsPopover';
 
@@ -35,6 +37,8 @@ export const TopToolbar: React.FC = () => {
   const setShowImportDialog = useEditorStore((s) => s.setShowImportDialog);
   const setShowExportDialog = useEditorStore((s) => s.setShowExportDialog);
   const documents = useEditorStore((s) => s.documents);
+  const addDocument = useEditorStore((s) => s.addDocument);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
   const togglePanel = useEditorStore((s) => s.togglePanel);
   const openPanels = useEditorStore((s) => s.openPanels);
 
@@ -363,6 +367,45 @@ export const TopToolbar: React.FC = () => {
           </div>
         )}
         <EditSettingsPopover />
+        <button
+          onClick={() => {
+            pushHistory('New frame');
+            addDocument({
+              id: uuid(),
+              sourceUrl: 'local://canvas',
+              importedAt: new Date().toISOString(),
+              viewport: { width: 1440, height: 900 },
+              rootNode: {
+                id: uuid(),
+                tagName: 'div',
+                attributes: {},
+                children: [],
+                styles: {
+                  computed: { width: '1440px', height: '900px', position: 'relative', 'background-color': '#ffffff' },
+                  overrides: {},
+                },
+                bounds: { x: 0, y: 0, width: 1440, height: 900 },
+                visible: true,
+                locked: false,
+                name: 'Frame',
+              },
+              assets: {},
+              canvasX: 0,
+              canvasY: 0,
+            });
+          }}
+          className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium cursor-pointer"
+          style={{
+            border: '1px solid var(--penma-border)',
+            color: 'var(--penma-text-secondary)',
+            fontFamily: 'var(--font-body)',
+            transition: 'var(--transition-base)',
+          }}
+          title="New blank frame"
+        >
+          <Plus size={14} />
+          New Frame
+        </button>
         <button
           onClick={() => setShowImportDialog(true)}
           className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium text-white cursor-pointer"

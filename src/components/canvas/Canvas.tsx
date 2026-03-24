@@ -175,11 +175,14 @@ export const Canvas: React.FC = () => {
             >
               {/* Frame label — draggable to move document */}
               <div
-                className="group/label absolute -top-6 left-0 flex items-center gap-1.5 whitespace-nowrap text-[11px] select-none cursor-grab active:cursor-grabbing"
+                className="group/label absolute left-0 flex items-center gap-1.5 whitespace-nowrap text-[11px] select-none cursor-grab active:cursor-grabbing"
                 onPointerDown={(e) => handleFrameDragStart(e, doc.id, doc.canvasX, doc.canvasY)}
                 onPointerMove={handleFrameDragMove}
                 onPointerUp={handleFrameDragEnd}
                 style={{
+                  top: -24 / camera.zoom,
+                  transform: `scale(${1 / camera.zoom})`,
+                  transformOrigin: 'bottom left',
                   color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
                   fontFamily: 'var(--font-heading)',
                   fontWeight: 600,
@@ -518,19 +521,22 @@ const FrameResizeHandle: React.FC<{
     window.addEventListener('pointerup', handleUp);
   }, [viewport, zoom, docId, direction, onResize, onStart]);
 
+  const handleSize = 8 / zoom;
+  const seSize = 12 / zoom;
+
   const style: React.CSSProperties = {
     position: 'absolute',
     zIndex: 10,
     ...(direction === 'e' && {
-      left: viewport.width - 2, top: 0, width: 8, height: viewport.height, cursor: 'ew-resize',
+      left: viewport.width - handleSize / 4, top: 0, width: handleSize, height: viewport.height, cursor: 'ew-resize',
     }),
     ...(direction === 's' && {
-      left: 0, top: viewport.height - 2, width: viewport.width, height: 8, cursor: 'ns-resize',
+      left: 0, top: viewport.height - handleSize / 4, width: viewport.width, height: handleSize, cursor: 'ns-resize',
     }),
     ...(direction === 'se' && {
-      left: viewport.width - 4, top: viewport.height - 4, width: 12, height: 12, cursor: 'nwse-resize',
+      left: viewport.width - seSize / 3, top: viewport.height - seSize / 3, width: seSize, height: seSize, cursor: 'nwse-resize',
       background: 'var(--penma-primary)',
-      borderRadius: 2,
+      borderRadius: 2 / zoom,
     }),
   };
 
