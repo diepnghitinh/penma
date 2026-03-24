@@ -150,14 +150,10 @@ export const Canvas: React.FC = () => {
       onPointerUp={handlePointerUp}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Dot grid */}
+      {/* Canvas background */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `radial-gradient(circle, #d4d4d4 1px, transparent 1px)`,
-          backgroundSize: `${20 * camera.zoom}px ${20 * camera.zoom}px`,
-          backgroundPosition: `${camera.x % (20 * camera.zoom)}px ${camera.y % (20 * camera.zoom)}px`,
-        }}
+        style={{ background: '#F5F7FA' }}
       />
 
       {/* Viewport transform */}
