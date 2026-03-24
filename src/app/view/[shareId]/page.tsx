@@ -1,13 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useEditorStore } from '@/store/editor-store';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { findNodeAcrossDocuments, cameraToFitBounds } from '@/lib/canvas/navigate-to-node';
 
 export default function PublicViewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="flex h-screen items-center justify-center"
+          style={{ background: 'var(--penma-bg)', color: 'var(--penma-text-muted)' }}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
+              style={{ borderColor: 'var(--penma-border)', borderTopColor: 'transparent' }}
+            />
+            <span className="text-sm">Loading...</span>
+          </div>
+        </div>
+      }
+    >
+      <PublicViewContent />
+    </Suspense>
+  );
+}
+
+function PublicViewContent() {
   const { shareId } = useParams<{ shareId: string }>();
+  const searchParams = useSearchParams();
+  const pageParam = searchParams.get('page');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +50,8 @@ export default function PublicViewPage() {
       })
       .then((data) => {
         const pages = data.pages ?? [];
-        const firstPage = pages[0];
+        // Use page from URL query param if available, otherwise first page
+        const targetPage = (pageParam && pages.find((p: { id: string }) => p.id === pageParam)) || pages[0];
 
         // Hydrate store in one batch (same pattern as loadProject)
         useEditorStore.setState({
@@ -33,11 +59,11 @@ export default function PublicViewPage() {
           projectName: data.name,
           isDirty: false,
           pages,
-          activePageId: firstPage?.id ?? '',
-          documents: firstPage?.documents ?? [],
-          activeDocumentId: firstPage?.activeDocumentId ?? null,
+          activePageId: targetPage?.id ?? '',
+          documents: targetPage?.documents ?? [],
+          activeDocumentId: targetPage?.activeDocumentId ?? null,
           selectedIds: [],
-          camera: firstPage?.camera ?? { x: 0, y: 0, zoom: 1 },
+          camera: targetPage?.camera ?? { x: 0, y: 0, zoom: 1 },
           undoStack: [],
           redoStack: [],
           showImportDialog: false,
@@ -66,7 +92,7 @@ export default function PublicViewPage() {
         setError('This project is not available');
         setLoading(false);
       });
-  }, [shareId]);
+  }, [shareId, pageParam]);
 
   if (loading) {
     return (

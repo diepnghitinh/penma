@@ -382,6 +382,7 @@ const ShareSubMenu: React.FC<{
 }> = ({ nodeId, node, close }) => {
   const [copied, setCopied] = React.useState<string | null>(null);
   const publicShareId = useEditorStore((s) => s.publicShareId);
+  const activePageId = useEditorStore((s) => s.activePageId);
 
   const copyAndFlash = (label: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -389,9 +390,9 @@ const ShareSubMenu: React.FC<{
     setTimeout(() => { setCopied(null); close(); }, 800);
   };
 
-  const editorLink = `${window.location.origin}${window.location.pathname}#${nodeId}`;
+  const editorLink = `${window.location.origin}${window.location.pathname}?page=${activePageId}#${nodeId}`;
   const publicLink = publicShareId
-    ? `${window.location.origin}/view/${publicShareId}#${nodeId}`
+    ? `${window.location.origin}/view/${publicShareId}?page=${activePageId}#${nodeId}`
     : null;
 
   // Build CSS string
