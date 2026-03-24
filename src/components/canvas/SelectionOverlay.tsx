@@ -464,8 +464,8 @@ export const SelectionOverlay: React.FC = () => {
           {/* Selection border — pink for instances */}
           <div className="absolute inset-0 pointer-events-none" style={{ border: `2px solid ${isSelectedInstance ? '#ec4899' : 'var(--penma-primary)'}` }} />
 
-          {/* Move area (pointer-events-auto) — disabled for instances */}
-          {editEnabled && editSettings.movable && !isSelectedInstance && (
+          {/* Move area (pointer-events-auto) */}
+          {editEnabled && editSettings.movable && (
             <div
               className="absolute inset-0 pointer-events-auto"
               style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
