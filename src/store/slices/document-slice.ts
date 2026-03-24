@@ -57,40 +57,111 @@ export interface DocumentSlice {
   isComponentRef: (nodeId: string) => boolean;
 }
 
+/** Check if a node is inside a master component (or is one) */
+function isInsideMaster(doc: PenmaDocument, nodeId: string): boolean {
+  const node = findNodeById(doc.rootNode, nodeId);
+  if (node?.componentId) return true;
+  const ancestors = getAncestorIds(doc.rootNode, nodeId);
+  for (const aid of ancestors) {
+    const a = findNodeById(doc.rootNode, aid);
+    if (a?.componentId) return true;
+  }
+  return false;
+}
+
 /**
  * Helper: apply a mutation to whichever document contains the given nodeId.
  * Returns the updated documents array.
  * If the mutated node is inside a master component, syncs all instances.
+ * Pass getState to also sync component references on other pages.
  */
 function mutateNodeInDocs(
   docs: PenmaDocument[],
   nodeId: string,
-  mutator: (draft: PenmaDocument) => void
+  mutator: (draft: PenmaDocument) => void,
+  getState?: () => EditorState,
+  setState?: (patch: Partial<EditorState>) => void,
 ): PenmaDocument[] {
   let shouldSync = false;
   const result = docs.map((doc) => {
     if (findNodeById(doc.rootNode, nodeId)) {
       const updated = produce(doc, mutator);
-      // Check if mutated node is a master root or inside a master component
-      const node = findNodeById(updated.rootNode, nodeId);
-      if (node?.componentId) {
-        shouldSync = true;
-      } else {
-        // Check ancestors — if any ancestor has componentId, this node is inside a master
-        const ancestors = getAncestorIds(updated.rootNode, nodeId);
-        for (const aid of ancestors) {
-          const a = findNodeById(updated.rootNode, aid);
-          if (a?.componentId) { shouldSync = true; break; }
-        }
-      }
+      if (isInsideMaster(updated, nodeId)) shouldSync = true;
       return updated;
     }
     return doc;
   });
   if (shouldSync) {
-    return syncComponentInstances(result);
+    const synced = syncComponentInstances(result);
+    // Cross-page sync: update instances on other pages
+    if (getState && setState) {
+      const state = getState();
+      const masters = collectMasters(synced);
+      if (masters.size > 0) {
+        let pagesChanged = false;
+        const updatedPages = state.pages.map((page) => {
+          if (page.id === state.activePageId) return page;
+          const syncedDocs = syncWithMasters(page.documents, masters);
+          if (syncedDocs !== page.documents) {
+            pagesChanged = true;
+            return { ...page, documents: syncedDocs };
+          }
+          return page;
+        });
+        if (pagesChanged) {
+          setState({ pages: updatedPages } as Partial<EditorState>);
+        }
+      }
+    }
+    return synced;
   }
   return result;
+}
+
+/**
+ * Collect all masters from documents and sync instances in a given docs array.
+ */
+function syncWithMasters(
+  docs: PenmaDocument[],
+  masters: Map<string, PenmaNode>,
+): PenmaDocument[] {
+  let changed = false;
+  const result = docs.map((doc) => {
+    const instances: { nodeId: string; compId: string }[] = [];
+    for (const node of flattenTree(doc.rootNode)) {
+      if (node.componentRef && masters.has(node.componentRef)) {
+        instances.push({ nodeId: node.id, compId: node.componentRef });
+      }
+    }
+    if (instances.length === 0) return doc;
+
+    changed = true;
+    return produce(doc, (draft) => {
+      for (const { nodeId, compId } of instances) {
+        updateNodeById(draft.rootNode, nodeId, (instance) => {
+          const master = masters.get(compId);
+          if (!master) return;
+          const overriddenIds = new Set(instance.instanceOverrides ?? []);
+          if (!overriddenIds.has(instance.id)) {
+            syncNodeFromMaster(instance, master);
+          }
+          instance.children = mergeChildren(master.children, instance.children, overriddenIds);
+        });
+      }
+    });
+  });
+  return changed ? result : docs;
+}
+
+/** Collect all master component nodes from documents */
+function collectMasters(docs: PenmaDocument[]): Map<string, PenmaNode> {
+  const masters = new Map<string, PenmaNode>();
+  for (const doc of docs) {
+    for (const node of flattenTree(doc.rootNode)) {
+      if (node.componentId) masters.set(node.componentId, node);
+    }
+  }
+  return masters;
 }
 
 /** Sync a single node from master, preserving bounds and position overrides */
@@ -297,7 +368,12 @@ export const createDocumentSlice: StateCreator<
   [],
   [],
   DocumentSlice
-> = (set, get) => ({
+> = (set, get) => {
+  /** Wrapper that passes get/set for cross-page sync */
+  const mutate = (docs: PenmaDocument[], nodeId: string, mutator: (draft: PenmaDocument) => void) =>
+    mutateNodeInDocs(docs, nodeId, mutator, get, set);
+
+  return {
   documents: [],
   activeDocumentId: null,
   isImporting: false,
@@ -363,7 +439,7 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeStyles: (nodeId, overrides) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           Object.assign(node.styles.overrides, overrides);
         });
@@ -374,7 +450,7 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeText: (nodeId, text) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.textContent = text; });
       });
       docs = markInstanceOverride(docs, nodeId);
@@ -383,7 +459,7 @@ export const createDocumentSlice: StateCreator<
 
   toggleNodeVisibility: (nodeId) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.visible = !node.visible; });
       });
       docs = markInstanceOverride(docs, nodeId);
@@ -392,14 +468,14 @@ export const createDocumentSlice: StateCreator<
 
   toggleNodeLock: (nodeId) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.locked = !node.locked; });
       }),
     })),
 
   renameNode: (nodeId, name) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { node.name = name; });
       });
       docs = markInstanceOverride(docs, nodeId);
@@ -408,7 +484,7 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeBounds: (nodeId, bounds) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
       }),
     })),
@@ -511,7 +587,7 @@ export const createDocumentSlice: StateCreator<
 
   toggleAutoLayout: (nodeId) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           if (node.autoLayout) {
             node.autoLayout = undefined;
@@ -562,35 +638,35 @@ export const createDocumentSlice: StateCreator<
 
   updateAutoLayout: (nodeId, patch) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) Object.assign(node.autoLayout, patch); });
       }),
     })),
 
   updateAutoLayoutPadding: (nodeId, side, value) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) node.autoLayout.padding[side] = value; });
       }),
     })),
 
   setUniformPadding: (nodeId, value) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { if (node.autoLayout) node.autoLayout.padding = { top: value, right: value, bottom: value, left: value }; });
       }),
     })),
 
   updateSizing: (nodeId, axis, mode) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => { if (!node.sizing) node.sizing = { ...DEFAULT_SIZING }; node.sizing[axis] = mode; });
       }),
     })),
 
   updateNodeFills: (nodeId, fills) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           node.fills = fills;
         });
@@ -624,7 +700,7 @@ export const createDocumentSlice: StateCreator<
 
   makeComponent: (nodeId) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           if (!node.componentId) {
             node.componentId = uuid();
@@ -686,7 +762,7 @@ export const createDocumentSlice: StateCreator<
 
   detachComponent: (nodeId) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      documents: mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           node.componentRef = undefined;
           node.componentId = undefined;
@@ -700,7 +776,7 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeAttributes: (nodeId, attributes) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           Object.assign(node.attributes, attributes);
         });
@@ -711,7 +787,7 @@ export const createDocumentSlice: StateCreator<
 
   removeNodeAttribute: (nodeId, key) =>
     set((state) => {
-      let docs = mutateNodeInDocs(state.documents, nodeId, (draft) => {
+      let docs = mutate(state.documents, nodeId, (draft) => {
         updateNodeById(draft.rootNode, nodeId, (node) => {
           delete node.attributes[key];
         });
@@ -728,7 +804,7 @@ export const createDocumentSlice: StateCreator<
     }
     return false;
   },
-});
+};};
 
 /** Deep-clone a node tree, assigning fresh IDs. Sets sourceNodeId to map back to master. */
 function cloneNodeWithNewIds(node: PenmaNode): PenmaNode {
