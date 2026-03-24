@@ -99,12 +99,12 @@ export const TopToolbar: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showZoomMenu]);
 
-  const commitZoomInput = () => {
+  const commitZoomInput = (closeMenu = false) => {
     const val = parseInt(zoomInputValue, 10);
     if (!isNaN(val) && val > 0) {
       zoomTo(Math.max(0.1, Math.min(10, val / 100)));
     }
-    setShowZoomMenu(false);
+    if (closeMenu) setShowZoomMenu(false);
   };
 
   const handleZoomPreset = (level: number) => {
@@ -316,10 +316,10 @@ export const TopToolbar: React.FC = () => {
                 value={zoomInputValue}
                 onChange={(e) => setZoomInputValue(e.target.value.replace(/[^0-9]/g, ''))}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitZoomInput();
+                  if (e.key === 'Enter') commitZoomInput(true);
                   if (e.key === 'Escape') setShowZoomMenu(false);
                 }}
-                onBlur={commitZoomInput}
+                onBlur={() => commitZoomInput(false)}
                 className="w-full rounded-md px-3 py-1.5 text-sm font-medium outline-none"
                 style={{
                   background: 'var(--penma-bg)',

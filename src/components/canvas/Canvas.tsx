@@ -60,27 +60,47 @@ export const Canvas: React.FC = () => {
   }, []);
 
   // Wheel/touchpad scroll → pan & zoom
-  // Touchpad two-finger scroll → pan (deltaX/deltaY)
-  // Touchpad pinch → zoom (ctrlKey + deltaY on most browsers)
-  // Mouse wheel → zoom (with Ctrl/Cmd) or vertical pan
+  // Pinch-to-zoom (ctrlKey + deltaY) → zoom at cursor
+  // Trackpad two-finger scroll (has deltaX) → pan
+  // Mouse wheel (no deltaX, deltaMode=1 or large deltaY steps) → zoom at cursor
+  // Shift+scroll → horizontal pan
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const state = useEditorStore.getState();
+      const rect = canvas.getBoundingClientRect();
+      const focal = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
       // Pinch-to-zoom (trackpad sends ctrlKey=true for pinch gestures)
       if (e.ctrlKey || e.metaKey) {
         const delta = -e.deltaY * 0.01;
         const newZoom = state.camera.zoom * (1 + delta);
-        const rect = canvas.getBoundingClientRect();
-        state.zoomTo(newZoom, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+        state.zoomTo(newZoom, focal);
+        return;
+      }
+
+      // Shift+scroll → horizontal pan
+      if (e.shiftKey) {
+        state.pan(-e.deltaY, 0);
+        return;
+      }
+
+      // Detect trackpad vs mouse wheel:
+      // - Trackpad: deltaMode=0, often has deltaX, small fractional deltaY
+      // - Mouse wheel: deltaMode=1 (line-based) or deltaMode=0 with large integer deltaY steps
+      const isTrackpad = e.deltaMode === 0 && (Math.abs(e.deltaX) > 0.5 || Math.abs(e.deltaY) < 4);
+
+      if (isTrackpad) {
+        // Trackpad two-finger scroll → pan
+        state.pan(-e.deltaX, -e.deltaY);
       } else {
-        // Two-finger scroll / mouse wheel → pan
-        // deltaMode 0 = pixels, 1 = lines (multiply by ~20)
+        // Mouse wheel → zoom at cursor
         const multiplier = e.deltaMode === 1 ? 20 : 1;
-        state.pan(-e.deltaX * multiplier, -e.deltaY * multiplier);
+        const delta = -e.deltaY * multiplier * 0.002;
+        const newZoom = state.camera.zoom * (1 + delta);
+        state.zoomTo(newZoom, focal);
       }
     };
     canvas.addEventListener('wheel', handleWheel, { passive: false });
