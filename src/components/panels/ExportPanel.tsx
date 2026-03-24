@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
-import { documentToFigmaJson, nodeToFigmaJson } from '@/lib/export/figma-json';
+import { documentToFigmaJson, documentsToFigmaJson, nodeToFigmaJson } from '@/lib/export/figma-json';
 import { nodeToHtml } from '@/lib/export/html-export';
 import type { PenmaDocument, PenmaNode } from '@/types/document';
 
@@ -76,6 +76,9 @@ export const ExportPanel: React.FC = () => {
 
   const target = exportTarget();
 
+  // Find the design system frame among all documents (if any)
+  const dsDoc = documents.find((d) => d.rootNode.attributes?.class === 'design-system-frame') ?? null;
+
   const generateExport = useCallback((): string => {
     if (!target) return '';
     const docs = target.docs ?? [target.doc];
@@ -84,23 +87,17 @@ export const ExportPanel: React.FC = () => {
         if (target.node && target.type === 'component') {
           return JSON.stringify(nodeToFigmaJson(target.node), null, 2);
         }
-        if (docs.length === 1) {
-          return JSON.stringify(documentToFigmaJson(docs[0]), null, 2);
+        {
+          // Filter out the DS frame from regular docs to avoid duplication
+          const frameDocs = docs.filter((d) => d.rootNode.attributes?.class !== 'design-system-frame');
+          if (frameDocs.length === 0) {
+            // Exporting only the DS frame itself
+            return JSON.stringify(documentToFigmaJson(docs[0]), null, 2);
+          }
+          // Include design system components if the DS frame exists
+          const exportDsDoc = dsDoc && !docs.includes(dsDoc) ? dsDoc : dsDoc ?? undefined;
+          return JSON.stringify(documentsToFigmaJson(frameDocs, exportDsDoc), null, 2);
         }
-        // Multi-frame: wrap all frames in one Figma document
-        return JSON.stringify({
-          name: 'Penma Export',
-          schemaVersion: 0,
-          document: {
-            id: '0:0', name: 'Document', type: 'DOCUMENT',
-            children: [{
-              id: '0:1', name: 'Page 1', type: 'CANVAS',
-              backgroundColor: { r: 0.96, g: 0.96, b: 0.96, a: 1 },
-              children: docs.map((d) => (documentToFigmaJson(d) as { document: { children: { children: object[] }[] } }).document.children[0].children[0]),
-            }],
-          },
-          metadata: { source: 'penma', frameCount: docs.length },
-        }, null, 2);
       case 'html':
         if (target.node && target.type === 'component') return nodeToHtml(target.node);
         return docs.map((d) => nodeToHtml(d.rootNode)).join('\n\n');

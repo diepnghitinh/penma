@@ -174,6 +174,60 @@ export function documentToFigmaJson(doc: PenmaDocument): object {
 }
 
 /**
+ * Export multiple documents to Figma JSON, linking design system components.
+ * When a design system frame exists among the documents, its master components
+ * are included so the Figma plugin can create real component instances.
+ */
+export function documentsToFigmaJson(docs: PenmaDocument[], dsDoc?: PenmaDocument): object {
+  const pageChildren: FigmaNode[] = [];
+  const images: Record<string, string> = {};
+  const svgs: Record<string, string> = {};
+
+  // If a design system document is provided, export it first so masters exist before instances
+  if (dsDoc) {
+    const dsNode = convertNode(dsDoc.rootNode, dsDoc.canvasX, dsDoc.canvasY);
+    arrangeDesignSystemFrame(dsNode);
+    collectAssets(dsNode, images, svgs);
+    pageChildren.push(dsNode);
+  }
+
+  // Export each document frame
+  for (const doc of docs) {
+    const node = convertNode(doc.rootNode, doc.canvasX, doc.canvasY);
+    collectAssets(node, images, svgs);
+    pageChildren.push(node);
+  }
+
+  const firstName = docs[0] ? getDocName(docs[0]) : 'Penma Export';
+
+  return {
+    name: firstName,
+    schemaVersion: 0,
+    document: {
+      id: '0:0',
+      name: 'Document',
+      type: 'DOCUMENT',
+      children: [
+        {
+          id: '0:1',
+          name: 'Page 1',
+          type: 'CANVAS',
+          backgroundColor: { r: 0.96, g: 0.96, b: 0.96, a: 1 },
+          children: pageChildren,
+        },
+      ],
+    },
+    images,
+    svgs,
+    metadata: {
+      source: 'penma',
+      frameCount: docs.length,
+      hasDesignSystem: !!dsDoc,
+    },
+  };
+}
+
+/**
  * Arrange children of a "Design System" frame with clean vertical layout.
  * Ensures auto layout, resets child positions, and makes descendant bounds relative.
  */

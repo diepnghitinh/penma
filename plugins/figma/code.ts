@@ -23,11 +23,15 @@ figma.showUI(__html__, { width: 360, height: 480 });
 
 let nodeCount = 0;
 
+/** Map of componentId → created Figma ComponentNode (for creating instances) */
+const componentMap = new Map<string, ComponentNode>();
+
 figma.ui.onmessage = async (msg: { type: string; data: any }) => {
   if (msg.type !== 'import' || !msg.data) return;
 
   try {
     nodeCount = 0;
+    componentMap.clear();
     const data = msg.data;
 
     let rootNodes: SceneNode[];
@@ -375,6 +379,69 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
     return createRectNode(data);
   }
 
+  // INSTANCE — create from master component, then override text & attributes
+  const isInstanceType = type === 'INSTANCE';
+  if (isInstanceType && data.componentProperties?.componentRef) {
+    const masterComp = componentMap.get(data.componentProperties.componentRef);
+    if (masterComp) {
+      const instance = masterComp.createInstance();
+      nodeCount++;
+      reportProgress();
+      instance.name = data.name || masterComp.name;
+      const bbox = data.absoluteBoundingBox;
+      if (bbox) {
+        instance.resize(Math.max(1, bbox.width), Math.max(1, bbox.height));
+      }
+      instance.visible = data.visible !== false;
+      instance.locked = data.locked === true;
+      if (data.opacity !== undefined && data.opacity < 1) instance.opacity = data.opacity;
+
+      // Override fills if different from master
+      if (data.fills && data.fills.length > 0) {
+        try {
+          instance.fills = data.fills.filter((f: any) => f.visible !== false).map((f: any) => ({
+            type: 'SOLID',
+            color: { r: f.color?.r || 0, g: f.color?.g || 0, b: f.color?.b || 0 },
+            opacity: f.opacity ?? f.color?.a ?? 1,
+          }));
+        } catch {}
+      }
+
+      // Override text content inside the instance — keep design system structure, update text
+      const dataTexts = collectTextsFromData(data);
+      if (dataTexts.length > 0) {
+        const instanceTexts = collectTextNodes(instance);
+        for (let i = 0; i < Math.min(dataTexts.length, instanceTexts.length); i++) {
+          const textNode = instanceTexts[i];
+          const textData = dataTexts[i];
+          if (textData.characters && textData.characters !== textNode.characters) {
+            try {
+              // Must load font before changing characters
+              const fontName = textNode.fontName as FontName;
+              if (fontName && fontName.family) {
+                await figma.loadFontAsync(fontName);
+              }
+              textNode.characters = textData.characters;
+            } catch {}
+          }
+          // Override text fills (color) if provided
+          if (textData.fills && textData.fills.length > 0) {
+            try {
+              textNode.fills = textData.fills.map((f: any) => ({
+                type: 'SOLID',
+                color: { r: f.color?.r || 0, g: f.color?.g || 0, b: f.color?.b || 0 },
+                opacity: f.opacity ?? f.color?.a ?? 1,
+              }));
+            } catch {}
+          }
+        }
+      }
+
+      return instance;
+    }
+    // Fall through to frame creation if master not found
+  }
+
   // COMPONENT — only create as Figma component if not already inside a component
   const isComponentType = type === 'COMPONENT';
   let frame: FrameNode | ComponentNode;
@@ -545,6 +612,11 @@ async function createFigmaNode(data: any, _parent: FrameNode | null, insideCompo
         }
       }
     }
+  }
+
+  // Register COMPONENT in the map so INSTANCE nodes can reference it later
+  if (isComponentType && !insideComponent && data.componentProperties?.componentId) {
+    componentMap.set(data.componentProperties.componentId, frame as ComponentNode);
   }
 
   return frame;
@@ -748,4 +820,32 @@ function reportProgress() {
   if (nodeCount % 10 === 0) {
     figma.ui.postMessage({ type: 'progress', percent: Math.min(90, nodeCount) });
   }
+}
+
+/** Recursively collect text data (characters + fills) from Figma JSON data in tree order */
+function collectTextsFromData(data: any): { characters: string; fills?: any[] }[] {
+  const results: { characters: string; fills?: any[] }[] = [];
+  if (data.type === 'TEXT' && data.characters) {
+    results.push({ characters: data.characters, fills: data.fills });
+  }
+  if (data.children) {
+    for (const child of data.children) {
+      results.push(...collectTextsFromData(child));
+    }
+  }
+  return results;
+}
+
+/** Recursively collect all TextNode children from a Figma scene node in tree order */
+function collectTextNodes(node: SceneNode): TextNode[] {
+  const results: TextNode[] = [];
+  if (node.type === 'TEXT') {
+    results.push(node);
+  }
+  if ('children' in node) {
+    for (const child of (node as any).children) {
+      results.push(...collectTextNodes(child));
+    }
+  }
+  return results;
 }

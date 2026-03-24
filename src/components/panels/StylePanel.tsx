@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, Paintbrush, Eye, EyeOff, Minus, Plus, SeparatorHorizontal } from 'lucide-react';
+import { Paintbrush } from 'lucide-react';
 import { sidebarConfig } from '@/configs/editor';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
@@ -9,6 +9,7 @@ import { getEffectiveStyle } from '@/lib/styles/style-resolver';
 import { STYLE_CATEGORIES } from '@/lib/styles/style-resolver';
 import { PositionPanel } from './PositionPanel';
 import { LayoutPanel } from './LayoutPanel';
+import { TypographyPanel } from './TypographyPanel';
 import { ExportPanel } from './ExportPanel';
 import type { PenmaNode, PenmaFill } from '@/types/document';
 
@@ -222,6 +223,14 @@ export const StylePanel: React.FC = () => {
           <LayoutPanel node={selectedNode} />
         )}
 
+        {/* Typography panel (Figma-style) — shown for text elements (span) */}
+        {!isInstance && (() => {
+          const isTextElement = selectedNode.tagName === 'span'
+            && !!selectedNode.textContent
+            && selectedNode.children.length === 0;
+          return isTextElement ? <TypographyPanel node={selectedNode} /> : null;
+        })()}
+
         {/* Native CSS property sections — hidden when showNativeCss is false */}
         {sidebarConfig.showNativeCss && Object.entries(STYLE_CATEGORIES)
           .filter(([category]) => {
@@ -262,6 +271,92 @@ export const StylePanel: React.FC = () => {
     </div>
   );
 };
+
+// ── Shared styles (consistent with Position / Layout panels) ─
+
+const mutedStyle: React.CSSProperties = { color: 'var(--penma-text-muted)' };
+
+const inputBgStyle: React.CSSProperties = {
+  background: 'var(--penma-hover-bg)',
+  color: 'var(--penma-text)',
+  border: 'none',
+  borderRadius: 6,
+};
+
+// ── Inline SVG icons ─────────────────────────────────────────
+
+const ChevronDownIcon: React.FC = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 4.5L6 7.5L9 4.5" />
+  </svg>
+);
+
+const ChevronRightIcon: React.FC = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4.5 3L7.5 6L4.5 9" />
+  </svg>
+);
+
+const PlusIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <line x1="7" y1="3" x2="7" y2="11" />
+    <line x1="3" y1="7" x2="11" y2="7" />
+  </svg>
+);
+
+const MinusIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <line x1="3" y1="7" x2="11" y2="7" />
+  </svg>
+);
+
+const EyeIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1.5 7s2.2-3.5 5.5-3.5S12.5 7 12.5 7s-2.2 3.5-5.5 3.5S1.5 7 1.5 7z" />
+    <circle cx="7" cy="7" r="1.5" />
+  </svg>
+);
+
+const EyeOffIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 2l10 10" />
+    <path d="M5.6 5.6a1.5 1.5 0 002.8 2.8" />
+    <path d="M3.5 5.5C2.3 6.3 1.5 7 1.5 7s2.2 3.5 5.5 3.5c.8 0 1.6-.2 2.3-.5" />
+    <path d="M10.5 8.5c1.2-.8 2-1.5 2-1.5s-2.2-3.5-5.5-3.5c-.3 0-.6 0-.9.1" />
+  </svg>
+);
+
+const IndividualSidesIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+    <line x1="2" y1="7" x2="5" y2="7" />
+    <line x1="9" y1="7" x2="12" y2="7" />
+    <rect x="5" y="5" width="4" height="4" rx="0.5" fill="currentColor" opacity="0.2" />
+  </svg>
+);
+
+// ── Small icon button (28×28, hover via JS) ──────────────────
+
+const IconBtn: React.FC<{
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, active, children }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className="flex h-[28px] w-[28px] items-center justify-center rounded-md cursor-pointer
+               transition-all duration-150 ease-out shrink-0"
+    style={{
+      color: active ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+      background: active ? 'var(--penma-primary-light)' : 'transparent',
+    }}
+    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--penma-hover-bg)'; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--penma-primary-light)' : 'transparent'; }}
+  >
+    {children}
+  </button>
+);
 
 // ── Fill panel (Figma-style, multiple fills with opacity) ───
 
@@ -327,7 +422,6 @@ function migrateFillsFromCss(node: PenmaNode): PenmaFill[] {
     && node.children.length === 0;
 
   if (isTextElement) {
-    // Try color first, then fall back to background-color
     const fromColor = parseCssColorToFills(styles['color']);
     if (fromColor.length > 0) return fromColor;
     return parseCssColorToFills(styles['background-color']);
@@ -340,7 +434,6 @@ const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const pushHistory = useEditorStore((s) => s.pushHistory);
   const [expanded, setExpanded] = useState(true);
 
-  // Migrate from CSS if fills not yet set
   const fills: PenmaFill[] = node.fills ?? migrateFillsFromCss(node);
 
   const update = useCallback((newFills: PenmaFill[]) => {
@@ -361,33 +454,28 @@ const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   }, [fills, update]);
 
   return (
-    <div className="border-b border-neutral-100">
+    <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
       {/* Header */}
-      <div className="flex h-8 items-center justify-between px-3">
+      <div className="flex h-9 items-center justify-between px-4">
         <button
-          className="flex items-center gap-1 text-xs font-medium text-neutral-500 cursor-pointer"
+          className="flex items-center gap-1.5 cursor-pointer"
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Fill
+          <span style={mutedStyle}>{expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--penma-text)' }}>Fill</span>
         </button>
-        <button
-          onClick={addFill}
-          className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
-          style={{ color: 'var(--penma-text-muted)' }}
-          title="Add fill"
-        >
-          <Plus size={12} />
-        </button>
+        <IconBtn onClick={addFill} title="Add fill"><PlusIcon /></IconBtn>
       </div>
 
       {expanded && fills.length > 0 && (
-        <div className="px-3 pb-2.5 flex flex-col gap-1.5">
-          {/* Render bottom-to-top (last fill = topmost layer, shown first) */}
+        <div className="px-4 pb-3 flex flex-col gap-2">
           {[...fills].reverse().map((fill) => (
-            <div key={fill.id} className="flex items-center gap-2">
+            <div key={fill.id} className="flex items-center gap-1.5">
               {/* Color swatch */}
-              <label className="relative h-6 w-6 shrink-0 cursor-pointer rounded border border-neutral-200 overflow-hidden">
+              <label
+                className="relative h-[28px] w-[28px] shrink-0 cursor-pointer rounded-md overflow-hidden"
+                style={{ border: '1px solid var(--penma-border)' }}
+              >
                 <div className="absolute inset-0" style={fillSwatchStyle(fill.color, fill.opacity)} />
                 <input
                   type="color"
@@ -397,46 +485,41 @@ const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
                 />
               </label>
               {/* Hex */}
-              <input
-                type="text"
-                value={fill.color.replace('#', '').toUpperCase()}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
-                  if (v.length === 6) updateFill(fill.id, { color: `#${v}` });
-                }}
-                className="w-[72px] rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 font-mono focus:border-blue-300 focus:outline-none"
-              />
+              <div className="flex flex-1 min-w-0 h-[30px] items-center rounded-md px-2" style={inputBgStyle}>
+                <input
+                  type="text"
+                  value={fill.color.replace('#', '').toUpperCase()}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+                    if (v.length === 6) updateFill(fill.id, { color: `#${v}` });
+                  }}
+                  className="w-full bg-transparent text-[12px] font-mono focus:outline-none"
+                  style={{ color: 'var(--penma-text)' }}
+                />
+              </div>
               {/* Opacity */}
-              <div className="flex items-center gap-0.5">
+              <div className="flex w-[52px] min-w-[52px] h-[30px] items-center rounded-md px-2 gap-0.5" style={inputBgStyle}>
                 <input
                   type="number"
                   value={fill.opacity}
                   onChange={(e) => updateFill(fill.id, { opacity: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
                   min={0}
                   max={100}
-                  className="w-10 rounded border border-neutral-200 px-1.5 py-1 text-[11px] text-neutral-700 text-right focus:border-blue-300 focus:outline-none
+                  className="w-full bg-transparent text-[12px] text-right focus:outline-none
                     [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  style={{ color: 'var(--penma-text)' }}
                 />
-                <span className="text-[10px] text-neutral-400">%</span>
+                <span className="text-[10px] shrink-0" style={mutedStyle}>%</span>
               </div>
               {/* Visibility toggle */}
-              <button
+              <IconBtn
                 onClick={() => updateFill(fill.id, { visible: !fill.visible })}
-                className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer shrink-0"
-                style={{ color: 'var(--penma-text-muted)' }}
                 title={fill.visible ? 'Hide fill' : 'Show fill'}
               >
-                {fill.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-              </button>
+                {fill.visible ? <EyeIcon /> : <EyeOffIcon />}
+              </IconBtn>
               {/* Remove */}
-              <button
-                onClick={() => removeFill(fill.id)}
-                className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer shrink-0"
-                style={{ color: 'var(--penma-text-muted)' }}
-                title="Remove fill"
-              >
-                <Minus size={12} />
-              </button>
+              <IconBtn onClick={() => removeFill(fill.id)} title="Remove fill"><MinusIcon /></IconBtn>
             </div>
           ))}
         </div>
@@ -457,7 +540,6 @@ const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const styles = { ...node.styles.computed, ...node.styles.overrides };
 
-  // Read current border values
   const btw = parseFloat(styles['border-top-width'] || '0') || 0;
   const brw = parseFloat(styles['border-right-width'] || '0') || 0;
   const bbw = parseFloat(styles['border-bottom-width'] || '0') || 0;
@@ -466,11 +548,9 @@ const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const uniformWeight = btw === brw && brw === bbw && bbw === blw;
   const weight = uniformWeight ? btw : Math.max(btw, brw, bbw, blw);
 
-  // Color — pick first available
   const rawColor = styles['border-top-color'] || styles['border-right-color'] || styles['border-bottom-color'] || styles['border-left-color'] || '#E2E8F0';
   const hexColor = parseColorToHex(rawColor);
 
-  // Visibility
   const borderStyle = styles['border-top-style'] || styles['border-bottom-style'] || 'solid';
   const isVisible = borderStyle !== 'none' && hasBorder;
 
@@ -525,115 +605,131 @@ const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   }, [applyBorder]);
 
   return (
-    <div className="border-b border-neutral-100">
+    <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
       {/* Header */}
-      <div className="flex h-8 items-center justify-between px-3">
+      <div className="flex h-9 items-center justify-between px-4">
         <button
-          className="flex items-center gap-1 text-xs font-medium text-neutral-500 cursor-pointer"
+          className="flex items-center gap-1.5 cursor-pointer"
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Stroke
+          <span style={mutedStyle}>{expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--penma-text)' }}>Stroke</span>
         </button>
-        <div className="flex items-center gap-1">
-          <button
+        <div className="flex items-center gap-0.5">
+          <IconBtn
             onClick={() => setShowIndividual(!showIndividual)}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
-            style={{ color: showIndividual ? 'var(--penma-primary)' : 'var(--penma-text-muted)' }}
             title="Individual sides"
+            active={showIndividual}
           >
-            <SeparatorHorizontal size={12} />
-          </button>
-          <button
+            <IndividualSidesIcon />
+          </IconBtn>
+          <IconBtn
             onClick={hasBorder ? removeBorder : addBorder}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
-            style={{ color: 'var(--penma-text-muted)' }}
             title={hasBorder ? 'Remove stroke' : 'Add stroke'}
           >
-            {hasBorder ? <Minus size={12} /> : <Plus size={12} />}
-          </button>
+            {hasBorder ? <MinusIcon /> : <PlusIcon />}
+          </IconBtn>
         </div>
       </div>
 
       {expanded && hasBorder && (
-        <div className="px-3 pb-2.5">
-          {/* Color + Opacity + Visibility */}
-          <div className="flex items-center gap-2 mb-2">
-            <input
-              type="color"
-              value={hexColor}
-              onChange={(e) => setColor(e.target.value)}
-              className="h-6 w-6 cursor-pointer rounded border border-neutral-200 p-0"
-            />
-            <input
-              type="text"
-              value={hexColor.replace('#', '').toUpperCase()}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
-                if (v.length === 6) setColor(`#${v}`);
-              }}
-              className="flex-1 rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 font-mono focus:border-blue-300 focus:outline-none"
-            />
-            <span className="text-[10px] text-neutral-400 w-8 text-right">100 %</span>
-            <button
+        <div className="px-4 pb-3 flex flex-col gap-3">
+          {/* Color + Hex + Opacity + Visibility */}
+          <div className="flex items-center gap-1.5">
+            <label
+              className="relative h-[28px] w-[28px] shrink-0 cursor-pointer rounded-md overflow-hidden"
+              style={{ border: '1px solid var(--penma-border)' }}
+            >
+              <div className="absolute inset-0" style={{ backgroundColor: hexColor }} />
+              <input
+                type="color"
+                value={hexColor}
+                onChange={(e) => setColor(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+            </label>
+            <div className="flex flex-1 min-w-0 h-[30px] items-center rounded-md px-2" style={inputBgStyle}>
+              <input
+                type="text"
+                value={hexColor.replace('#', '').toUpperCase()}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+                  if (v.length === 6) setColor(`#${v}`);
+                }}
+                className="w-full bg-transparent text-[12px] font-mono focus:outline-none"
+                style={{ color: 'var(--penma-text)' }}
+              />
+            </div>
+            <div className="flex w-[52px] min-w-[52px] h-[30px] items-center rounded-md px-2 gap-0.5" style={inputBgStyle}>
+              <span className="text-[12px]" style={{ color: 'var(--penma-text)' }}>100</span>
+              <span className="text-[10px] shrink-0" style={mutedStyle}>%</span>
+            </div>
+            <IconBtn
               onClick={toggleVisibility}
-              className="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100 cursor-pointer"
-              style={{ color: 'var(--penma-text-muted)' }}
               title={isVisible ? 'Hide stroke' : 'Show stroke'}
             >
-              {isVisible ? <Eye size={12} /> : <EyeOff size={12} />}
-            </button>
+              {isVisible ? <EyeIcon /> : <EyeOffIcon />}
+            </IconBtn>
           </div>
 
           {/* Position + Weight */}
           {!showIndividual && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
               <div className="flex-1">
-                <div className="text-[9px] text-neutral-400 mb-1">Position</div>
-                <select
-                  value="inside"
-                  onChange={(e) => {
-                    // CSS box model is always "inside" for borders
-                    // This is informational for Figma export
-                  }}
-                  className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 focus:outline-none cursor-pointer"
-                >
-                  {STROKE_POSITIONS.map((p) => (
-                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                  ))}
-                </select>
+                <span className="block text-[11px] mb-1.5" style={mutedStyle}>Position</span>
+                <div className="flex h-[30px] items-center rounded-md" style={inputBgStyle}>
+                  <select
+                    value="inside"
+                    onChange={() => {}}
+                    className="w-full h-full bg-transparent rounded-md px-2 text-[12px] focus:outline-none cursor-pointer appearance-none"
+                    style={{ color: 'var(--penma-text)' }}
+                  >
+                    {STROKE_POSITIONS.map((p) => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                  <svg width="8" height="5" viewBox="0 0 8 5" className="mr-2 shrink-0 pointer-events-none" style={{ color: 'var(--penma-text-muted)', opacity: 0.6 }}>
+                    <path d="M0.5 0.5L4 4L7.5 0.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
               </div>
               <div className="flex-1">
-                <div className="text-[9px] text-neutral-400 mb-1">Weight</div>
-                <input
-                  type="number"
-                  value={weight}
-                  onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
-                  min={0}
-                  max={100}
-                  className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none
-                    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
+                <span className="block text-[11px] mb-1.5" style={mutedStyle}>Weight</span>
+                <div className="flex h-[30px] items-center rounded-md px-2" style={inputBgStyle}>
+                  <input
+                    type="number"
+                    value={weight}
+                    onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
+                    min={0}
+                    max={100}
+                    className="w-full bg-transparent text-[12px] focus:outline-none
+                      [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    style={{ color: 'var(--penma-text)' }}
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {/* Individual side weights */}
           {showIndividual && (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            <div className="grid grid-cols-2 gap-x-1.5 gap-y-1.5">
               {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
                 const val = parseFloat(styles[`border-${side}-width`] || '0') || 0;
                 return (
-                  <div key={side} className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-neutral-400 w-6 capitalize">{side.slice(0, 1).toUpperCase()}</span>
+                  <div key={side} className="flex h-[30px] items-center rounded-md px-2 gap-1.5" style={inputBgStyle}>
+                    <span className="text-[11px] font-medium shrink-0 select-none" style={mutedStyle}>
+                      {side.charAt(0).toUpperCase()}
+                    </span>
                     <input
                       type="number"
                       value={val}
                       onChange={(e) => setWeight(parseInt(e.target.value) || 0, side)}
                       min={0}
                       max={100}
-                      className="flex-1 rounded border border-neutral-200 px-2 py-0.5 text-[11px] text-neutral-700 focus:border-blue-300 focus:outline-none
+                      className="w-full bg-transparent text-[12px] focus:outline-none
                         [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      style={{ color: 'var(--penma-text)' }}
                     />
                   </div>
                 );
