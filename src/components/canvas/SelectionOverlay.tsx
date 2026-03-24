@@ -20,6 +20,7 @@ export const SelectionOverlay: React.FC = () => {
   const editEnabled = useEditorStore((s) => s.editEnabled);
   const editSettings = useEditorStore((s) => s.editSettings);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const documents = useEditorStore((s) => s.documents);
@@ -233,6 +234,15 @@ export const SelectionOverlay: React.FC = () => {
             top: `${orig.top + dy}px`,
             left: `${orig.left + dx}px`,
           });
+          // Sync bounds so sidebar attributes stay in sync
+          const el = document.querySelector(`[data-penma-id="${orig.id}"]`) as HTMLElement | null;
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            updateNodeBounds(orig.id, {
+              x: Math.round(rect.x / camera.zoom),
+              y: Math.round(rect.y / camera.zoom),
+            });
+          }
         }
       }
     };
@@ -365,10 +375,22 @@ export const SelectionOverlay: React.FC = () => {
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
       pushHistory('Resize element');
-      updateNodeStyles(resizeStart.current.nodeId, {
+      const nodeId = resizeStart.current.nodeId;
+      updateNodeStyles(nodeId, {
         width: `${Math.round(newW)}px`,
         height: `${Math.round(newH)}px`,
       });
+      // Sync bounds so sidebar attributes stay in sync
+      const el = document.querySelector(`[data-penma-id="${nodeId}"]`) as HTMLElement | null;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        updateNodeBounds(nodeId, {
+          x: Math.round(rect.x / camera.zoom),
+          y: Math.round(rect.y / camera.zoom),
+          width: Math.round(newW),
+          height: Math.round(newH),
+        });
+      }
     };
 
     window.addEventListener('pointermove', handleMove);

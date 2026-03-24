@@ -283,7 +283,26 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeStyles: (nodeId, overrides) =>
     set((state) => {
-      if (isInstanceNode(state.documents, nodeId)) return state; // Instances are not editable
+      const isInstance = isInstanceNode(state.documents, nodeId);
+      if (isInstance) {
+        // Instances only allow position-related style overrides
+        const POSITION_KEYS = new Set(['position', 'top', 'left', 'right', 'bottom', 'z-index', 'transform']);
+        const allowed: Record<string, string> = {};
+        for (const [key, value] of Object.entries(overrides)) {
+          if (POSITION_KEYS.has(key)) allowed[key] = value;
+        }
+        if (Object.keys(allowed).length === 0) return state;
+        return {
+          documents: state.documents.map((doc) => {
+            if (!findNodeById(doc.rootNode, nodeId)) return doc;
+            return produce(doc, (draft) => {
+              updateNodeById(draft.rootNode, nodeId, (node) => {
+                Object.assign(node.styles.overrides, allowed);
+              });
+            });
+          }),
+        };
+      }
       return {
         documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
           updateNodeById(draft.rootNode, nodeId, (node) => {
@@ -326,9 +345,18 @@ export const createDocumentSlice: StateCreator<
 
   updateNodeBounds: (nodeId, bounds) =>
     set((state) => ({
-      documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
-        updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
-      }),
+      // Bounds changes are always allowed (including on component instances)
+      // Use direct produce for instances to avoid triggering component sync
+      documents: isInstanceNode(state.documents, nodeId)
+        ? state.documents.map((doc) => {
+            if (!findNodeById(doc.rootNode, nodeId)) return doc;
+            return produce(doc, (draft) => {
+              updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
+            });
+          })
+        : mutateNodeInDocs(state.documents, nodeId, (draft) => {
+            updateNodeById(draft.rootNode, nodeId, (node) => { Object.assign(node.bounds, bounds); });
+          }),
     })),
 
   addNodeToActiveDocument: (node) =>

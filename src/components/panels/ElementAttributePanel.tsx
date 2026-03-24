@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
@@ -135,6 +135,7 @@ export const ElementAttributePanel: React.FC = () => {
 
 const PositionSizeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const handleBoundsChange = useCallback(
@@ -142,9 +143,17 @@ const PositionSizeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
       const num = parseFloat(value);
       if (isNaN(num)) return;
       pushHistory(`Change ${field}`);
+      // Update bounds (shared data for sidebar)
       updateNodeBounds(node.id, { [field]: num });
+      // Also update styles so the Design View reflects the change
+      const styleMap: Record<string, string> = {};
+      if (field === 'x') styleMap['left'] = `${num}px`;
+      if (field === 'y') styleMap['top'] = `${num}px`;
+      if (field === 'width') styleMap['width'] = `${num}px`;
+      if (field === 'height') styleMap['height'] = `${num}px`;
+      updateNodeStyles(node.id, styleMap);
     },
-    [node.id, updateNodeBounds, pushHistory]
+    [node.id, updateNodeBounds, updateNodeStyles, pushHistory]
   );
 
   return (
@@ -461,7 +470,11 @@ function parseColorToHex(color: string): string | null {
   return null;
 }
 
-/** Editable attribute row — click to edit, Enter/blur to commit */
+/**
+ * Editable attribute row — always-visible input directly bound to store value.
+ * No local draft state: the input value IS the store value (single source of truth).
+ * Changes are written to the store immediately on blur/Enter.
+ */
 const EditableAttrRow: React.FC<{
   label: string;
   value: string;
@@ -469,39 +482,39 @@ const EditableAttrRow: React.FC<{
   onCommit: (value: string) => void;
   onRemove?: () => void;
 }> = ({ label, value, colorPreview, onCommit, onRemove }) => {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
   const hex = colorPreview ? parseColorToHex(value) : null;
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Track if user is actively typing to avoid store overwrites mid-edit
+  const pendingRef = useRef<string | null>(null);
 
-  // Sync draft when value changes externally
+  // Keep input in sync with store value when not actively editing
   useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
-
-  // Auto-focus input when editing starts
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (inputRef.current && pendingRef.current === null) {
+      inputRef.current.value = value;
     }
-  }, [editing]);
+  }, [value]);
 
-  const commit = useCallback(() => {
-    setEditing(false);
-    if (draft !== value) {
-      onCommit(draft);
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    pendingRef.current = e.target.value;
+  }, []);
+
+  const flush = useCallback(() => {
+    if (pendingRef.current !== null && pendingRef.current !== value) {
+      onCommit(pendingRef.current);
     }
-  }, [draft, value, onCommit]);
+    pendingRef.current = null;
+  }, [value, onCommit]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      commit();
+      flush();
+      e.currentTarget.blur();
     } else if (e.key === 'Escape') {
-      setDraft(value);
-      setEditing(false);
+      pendingRef.current = null;
+      e.currentTarget.value = value;
+      e.currentTarget.blur();
     }
-  }, [commit, value]);
+  }, [flush, value]);
 
   return (
     <div className="group/row flex items-center gap-2 py-0.5">
@@ -515,32 +528,30 @@ const EditableAttrRow: React.FC<{
             style={{ backgroundColor: hex, border: '1px solid var(--penma-border)' }}
           />
         )}
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={handleKeyDown}
-            className="flex-1 rounded px-1 py-0 text-[11px] min-w-0"
-            style={{
-              color: 'var(--penma-text)',
-              background: 'var(--penma-bg-secondary, rgba(0,0,0,0.04))',
-              border: '1px solid var(--penma-accent, #2563eb)',
-              outline: 'none',
-            }}
-          />
-        ) : (
-          <span
-            className="text-[11px] truncate select-all cursor-text flex-1"
-            style={{ color: 'var(--penma-text)' }}
-            title={`${value} (click to edit)`}
-            onClick={() => setEditing(true)}
-          >
-            {value}
-          </span>
-        )}
+        <input
+          ref={inputRef}
+          type="text"
+          defaultValue={value}
+          onChange={handleChange}
+          onBlur={flush}
+          onKeyDown={handleKeyDown}
+          className="flex-1 rounded px-1 py-0 text-[11px] min-w-0"
+          style={{
+            color: 'var(--penma-text)',
+            background: 'transparent',
+            border: '1px solid transparent',
+            outline: 'none',
+            transition: 'border-color 150ms',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = 'var(--penma-accent, #2563eb)';
+            e.currentTarget.style.background = 'var(--penma-bg-secondary, rgba(0,0,0,0.04))';
+          }}
+          onBlurCapture={(e) => {
+            e.currentTarget.style.borderColor = 'transparent';
+            e.currentTarget.style.background = 'transparent';
+          }}
+        />
         {onRemove && (
           <button
             onClick={onRemove}
