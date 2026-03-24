@@ -45,7 +45,12 @@ export const createProjectSlice: StateCreator<
         camera: (p.camera ?? { x: 0, y: 0, zoom: 1 }) as PenmaPage['camera'],
       })
     );
-    const firstPage = pages[0];
+
+    // Use page from URL query param if available, otherwise first page
+    const pageParam = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('page')
+      : null;
+    const targetPage = (pageParam && pages.find((p) => p.id === pageParam)) || pages[0];
 
     set({
       // Project metadata
@@ -56,17 +61,17 @@ export const createProjectSlice: StateCreator<
       lastSavedAt: new Date(data.updatedAt),
       // All pages with their full state
       pages,
-      activePageId: firstPage?.id ?? '',
+      activePageId: targetPage?.id ?? '',
       // Hydrate active page into live editor state
-      documents: firstPage?.documents ?? [],
-      activeDocumentId: firstPage?.activeDocumentId ?? null,
-      selectedIds: firstPage?.selectedIds ?? [],
-      camera: firstPage?.camera ?? { x: 0, y: 0, zoom: 1 },
+      documents: targetPage?.documents ?? [],
+      activeDocumentId: targetPage?.activeDocumentId ?? null,
+      selectedIds: targetPage?.selectedIds ?? [],
+      camera: targetPage?.camera ?? { x: 0, y: 0, zoom: 1 },
       // Reset session-only state
       undoStack: [],
       redoStack: [],
       // Hide import dialog if project already has documents
-      showImportDialog: (firstPage?.documents ?? []).length === 0,
+      showImportDialog: (targetPage?.documents ?? []).length === 0,
     });
   },
 

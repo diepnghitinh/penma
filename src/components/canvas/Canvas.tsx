@@ -8,6 +8,8 @@ import { FontLoader } from './FontLoader';
 import { SelectionOverlay } from './SelectionOverlay';
 import { AutoLayoutOverlay } from './AutoLayoutOverlay';
 import { MeasureOverlay } from './MeasureOverlay';
+import { SmartGuidesOverlay } from './SmartGuidesOverlay';
+import { getResizeSnap, type SnapRect } from '@/lib/canvas/smart-guides';
 import { MarqueeSelect } from './MarqueeSelect';
 import dynamic from 'next/dynamic';
 const BottomToolbar = dynamic(() => import('@/components/toolbar/BottomToolbar').then(m => m.BottomToolbar), { ssr: false });
@@ -277,6 +279,7 @@ export const Canvas: React.FC = () => {
 
       <AutoLayoutOverlay />
       <MeasureOverlay />
+      <SmartGuidesOverlay />
       {editEnabled && <ShapeCreator canvasRef={canvasRef} />}
       <MarqueeSelect canvasRef={canvasRef} />
       <SelectionOverlay />
@@ -467,6 +470,10 @@ const FrameResizeHandle: React.FC<{
   const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const frameElRef = useRef<HTMLElement | null>(null);
   const sizeElRef = useRef<HTMLElement | null>(null);
+  /** Cached sibling frame screen rects for snapping */
+  const siblingFramesRef = useRef<SnapRect[]>([]);
+  /** Initial frame screen rect */
+  const initScreenRectRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -481,6 +488,44 @@ const FrameResizeHandle: React.FC<{
     frameElRef.current = wrapper?.querySelector('.shadow-2xl') as HTMLElement ?? wrapper?.firstElementChild as HTMLElement;
     sizeElRef.current = wrapper?.querySelector('[data-viewport-size]') as HTMLElement;
 
+    // Cache this frame's screen position and other frames' screen rects
+    const frameEl = frameElRef.current;
+    if (frameEl) {
+      const r = frameEl.getBoundingClientRect();
+      initScreenRectRef.current = { x: r.x, y: r.y };
+    }
+
+    // Collect snap targets: other document frames + child elements inside this frame
+    const snapTargets: SnapRect[] = [];
+
+    // Other document frames
+    const allFrames = document.querySelectorAll('.shadow-2xl');
+    allFrames.forEach((el) => {
+      if (el === frameElRef.current) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        snapTargets.push({ id: `frame-${el.parentElement?.getAttribute('data-doc-id') || ''}`, x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+    });
+
+    // Child elements inside this frame
+    const currentFrame = frameElRef.current;
+    if (currentFrame) {
+      const childEls = currentFrame.querySelectorAll('[data-penma-id]');
+      childEls.forEach((el) => {
+        const childId = el.getAttribute('data-penma-id')!;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          snapTargets.push({ id: childId, x: r.x, y: r.y, width: r.width, height: r.height });
+        }
+      });
+    }
+
+    siblingFramesRef.current = snapTargets;
+
+    const setSmartGuides = useEditorStore.getState().setSmartGuides;
+    const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+
     const handleMove = (ev: PointerEvent) => {
       const dx = (ev.clientX - startRef.current.x) / zoom;
       const dy = (ev.clientY - startRef.current.y) / zoom;
@@ -488,6 +533,25 @@ const FrameResizeHandle: React.FC<{
       let h = startRef.current.h;
       if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
       if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
+
+      // Compute tentative frame screen rect and snap
+      const screenRect: SnapRect = {
+        id: docId,
+        x: initScreenRectRef.current.x,
+        y: initScreenRectRef.current.y,
+        width: w * zoom,
+        height: h * zoom,
+      };
+      const resizeEdges = {
+        right: direction === 'e' || direction === 'se',
+        bottom: direction === 's' || direction === 'se',
+      };
+      const snap = getResizeSnap(screenRect, siblingFramesRef.current, resizeEdges);
+      setSmartGuides(snap.guides, []);
+
+      // Apply snap correction to width/height
+      if (resizeEdges.right) w = Math.max(200, Math.round(w + snap.dx / zoom));
+      if (resizeEdges.bottom) h = Math.max(200, Math.round(h + snap.dy / zoom));
 
       // Direct DOM update for smooth dragging (no React re-render)
       const frame = frameElRef.current;
@@ -507,13 +571,31 @@ const FrameResizeHandle: React.FC<{
     const handleUp = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      clearSmartGuides();
+
       const dx = (ev.clientX - startRef.current.x) / zoom;
       const dy = (ev.clientY - startRef.current.y) / zoom;
       let w = startRef.current.w;
       let h = startRef.current.h;
       if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
       if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
-      // Commit to store on release
+
+      // Apply final snap
+      const screenRect: SnapRect = {
+        id: docId,
+        x: initScreenRectRef.current.x,
+        y: initScreenRectRef.current.y,
+        width: w * zoom,
+        height: h * zoom,
+      };
+      const resizeEdges = {
+        right: direction === 'e' || direction === 'se',
+        bottom: direction === 's' || direction === 'se',
+      };
+      const snap = getResizeSnap(screenRect, siblingFramesRef.current, resizeEdges);
+      if (resizeEdges.right) w = Math.max(200, Math.round(w + snap.dx / zoom));
+      if (resizeEdges.bottom) h = Math.max(200, Math.round(h + snap.dy / zoom));
+
       onResize(docId, { width: w, height: h });
     };
 

@@ -340,6 +340,7 @@ const ConstraintsSection: React.FC<{
 export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const updateDocumentPosition = useEditorStore((s) => s.updateDocumentPosition);
   const pushHistory = useEditorStore((s) => s.pushHistory);
   const documents = useEditorStore((s) => s.documents);
 
@@ -348,19 +349,23 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const isAbsolute = node.styles.computed['position'] === 'absolute' || node.styles.computed['position'] === 'fixed'
     || node.styles.overrides['position'] === 'absolute' || node.styles.overrides['position'] === 'fixed';
 
+  // Check if node is a document root
+  const parentDoc = documents.find((d) => d.rootNode.id === node.id) ?? null;
+  const isDocRoot = !!parentDoc;
+
   // Find parent bounds — position X/Y is relative to parent
   const parentBounds = (() => {
+    if (isDocRoot) return { x: 0, y: 0, width: parentDoc!.viewport.width, height: parentDoc!.viewport.height };
     for (const doc of documents) {
       const parent = findParentNode(doc.rootNode, node.id);
       if (parent) return parent.bounds;
-      if (doc.rootNode.id === node.id) return { x: 0, y: 0, width: doc.viewport.width, height: doc.viewport.height };
     }
     return { x: 0, y: 0, width: 0, height: 0 };
   })();
 
-  // X/Y relative to parent
-  const x = Math.round(node.bounds.x - parentBounds.x);
-  const y = Math.round(node.bounds.y - parentBounds.y);
+  // X/Y: for document root, use canvasX/canvasY; for children, relative to parent
+  const x = isDocRoot ? parentDoc!.canvasX : Math.round(node.bounds.x - parentBounds.x);
+  const y = isDocRoot ? parentDoc!.canvasY : Math.round(node.bounds.y - parentBounds.y);
   const rotation = parseFloat(node.styles.overrides['rotate'] || node.styles.computed['rotate'] || '0') || 0;
 
   // Derive constraints from CSS
@@ -408,12 +413,22 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const handlePositionChange = useCallback((axis: 'x' | 'y', value: number) => {
     pushHistory(`Move ${axis.toUpperCase()}`);
-    // Clamp within parent bounds
+
+    if (isDocRoot && parentDoc) {
+      // Document root: update canvas position directly
+      if (axis === 'x') {
+        updateDocumentPosition(parentDoc.id, Math.round(value), parentDoc.canvasY);
+      } else {
+        updateDocumentPosition(parentDoc.id, parentDoc.canvasX, Math.round(value));
+      }
+      return;
+    }
+
+    // Child element: clamp within parent bounds
     let clamped = value;
     if (axis === 'x') {
       const maxX = parentBounds.width - node.bounds.width;
       clamped = Math.max(0, Math.min(maxX, value));
-      // Store absolute bounds, CSS left is relative to parent
       updateNodeBounds(node.id, { x: parentBounds.x + clamped });
       updateNodeStyles(node.id, { left: `${clamped}px` });
     } else {
@@ -422,7 +437,7 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
       updateNodeBounds(node.id, { y: parentBounds.y + clamped });
       updateNodeStyles(node.id, { top: `${clamped}px` });
     }
-  }, [node.id, node.bounds.width, node.bounds.height, parentBounds, updateNodeBounds, updateNodeStyles, pushHistory]);
+  }, [node.id, node.bounds.width, node.bounds.height, parentBounds, isDocRoot, parentDoc, updateNodeBounds, updateNodeStyles, updateDocumentPosition, pushHistory]);
 
   const handleRotationChange = useCallback((deg: number) => {
     pushHistory('Rotate');
@@ -448,7 +463,9 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   }, [node.id, node.styles.overrides, updateNodeStyles, pushHistory]);
 
   // Alignment: align selected node within its parent (uses parent-relative coords)
+  // For document roots, alignment is not applicable (they position freely on canvas)
   const handleAlign = useCallback((align: string) => {
+    if (isDocRoot) return;
     pushHistory(`Align ${align}`);
     const b = node.bounds;
     const pb = parentBounds;
@@ -462,7 +479,7 @@ export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
       case 'center-v': relY = Math.round((pb.height - b.height) / 2); updateNodeBounds(node.id, { y: pb.y + relY }); updateNodeStyles(node.id, { top: `${relY}px` }); break;
       case 'bottom': relY = pb.height - b.height; updateNodeBounds(node.id, { y: pb.y + relY }); updateNodeStyles(node.id, { top: `${relY}px` }); break;
     }
-  }, [node.id, node.bounds, parentBounds, updateNodeBounds, updateNodeStyles, pushHistory]);
+  }, [node.id, node.bounds, parentBounds, isDocRoot, updateNodeBounds, updateNodeStyles, pushHistory]);
 
   const toggleAbsolute = useCallback(() => {
     pushHistory('Toggle absolute position');

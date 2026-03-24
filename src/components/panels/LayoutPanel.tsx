@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import type { PenmaNode, LayoutDirection, PrimaryAxisAlign, CounterAxisAlign } from '@/types/document';
+import { VIEWPORT_PRESET_GROUPS, VIEWPORT_PRESETS } from '@/types/editor';
 
 // ─── Icons ──────────────────────────────────────────────────
 
@@ -515,6 +516,26 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
         {/* ── Dimensions ── */}
         <div>
           <span className="block text-[11px] mb-1.5" style={mutedStyle}>Dimensions</span>
+
+          {/* Viewport presets — shown for frames and document roots */}
+          {(hasAutoLayout || parentDoc) && (
+            <ViewportPresetSelect w={w} h={h} onChange={(pw, ph) => {
+              handleDimensionChange('width', String(pw));
+              // Need separate call for height since handleDimensionChange only changes one axis
+              // unless constrainProportions is on
+              if (!constrainProportions) {
+                pushHistory(`Resize height`);
+                if (parentDoc) {
+                  updateDocumentViewport(parentDoc.id, { width: pw, height: ph });
+                  updateNodeStyles(node.id, { width: `${pw}px`, height: `${ph}px` });
+                } else {
+                  updateNodeStyles(node.id, { width: `${pw}px`, height: `${ph}px` });
+                  updateNodeBounds(node.id, { width: pw, height: ph });
+                }
+              }
+            }} />
+          )}
+
           <div className="flex items-center gap-1.5">
             <DimCell
               label="W"
@@ -657,6 +678,83 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
           </>
         )}
       </div>
+    </div>
+  );
+};
+
+// ── Viewport preset select ──────────────────────────────────
+
+const ViewportPresetSelect: React.FC<{
+  w: number;
+  h: number;
+  onChange: (w: number, h: number) => void;
+}> = ({ w, h, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node) && btnRef.current && !btnRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const matched = VIEWPORT_PRESETS.find((p) => p.width === w && p.height === h);
+
+  return (
+    <div className="relative mb-1.5">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full h-[26px] items-center justify-between rounded-md px-2 text-[11px] cursor-pointer"
+        style={{ background: 'var(--penma-hover-bg)', color: 'var(--penma-text)', border: 'none' }}
+      >
+        <span>{matched?.name ?? 'Custom'}</span>
+        <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--penma-text-muted)' }}>
+          <path d="M0.5 0.5L4 4L7.5 0.5" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={ref}
+          className="absolute left-0 right-0 top-full mt-1 rounded-lg shadow-lg border overflow-y-auto"
+          style={{ background: 'var(--penma-surface)', borderColor: 'var(--penma-border)', zIndex: 50, maxHeight: 360 }}
+        >
+          {VIEWPORT_PRESET_GROUPS.map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <div style={{ borderTop: '1px solid var(--penma-border)' }} />}
+              <div className="px-3 pt-2 pb-1">
+                <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)' }}>
+                  {group.label}
+                </span>
+              </div>
+              {group.presets.map((preset) => {
+                const isActive = matched?.name === preset.name && w === preset.width && h === preset.height;
+                return (
+                  <button
+                    key={`${preset.name}-${preset.width}`}
+                    onClick={() => { onChange(preset.width, preset.height); setOpen(false); }}
+                    className="flex w-full items-center px-3 py-1 text-[11px] cursor-pointer text-left"
+                    style={{ color: isActive ? 'var(--penma-primary)' : 'var(--penma-text)', fontWeight: isActive ? 600 : 400, transition: 'background 80ms' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span className="flex-1 truncate">{preset.name}</span>
+                    <span className="ml-2 font-mono text-[9px] shrink-0" style={{ color: 'var(--penma-text-muted)' }}>
+                      {preset.width}×{preset.height}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

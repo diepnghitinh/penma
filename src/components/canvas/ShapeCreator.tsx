@@ -81,10 +81,15 @@ export const ShapeCreator: React.FC<{
         cam
       );
 
+      // Convert from canvas space to document-frame-relative space
+      const activeDoc = store.documents.find((d) => d.id === store.activeDocumentId) ?? store.documents[0];
+      const frameOffsetX = activeDoc?.canvasX ?? 0;
+      const frameOffsetY = activeDoc?.canvasY ?? 0;
+
       let w = Math.abs(endDoc.x - startDoc.x);
       let h = Math.abs(endDoc.y - startDoc.y);
-      const x = Math.min(startDoc.x, endDoc.x);
-      const y = Math.min(startDoc.y, endDoc.y);
+      const x = Math.min(startDoc.x, endDoc.x) - frameOffsetX;
+      const y = Math.min(startDoc.y, endDoc.y) - frameOffsetY;
 
       // Minimum size — if click without drag, use default size
       if (w < 10) w = activeTool === 'line' || activeTool === 'arrow' ? 200 : 100;

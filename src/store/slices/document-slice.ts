@@ -31,6 +31,8 @@ export interface DocumentSlice {
   updateNodeBounds: (nodeId: string, bounds: Partial<PenmaNode['bounds']>) => void;
   addNodeToActiveDocument: (node: PenmaNode) => void;
   deleteNodes: (nodeIds: string[]) => void;
+  /** Move a node to a new index within its parent's children */
+  reorderNode: (nodeId: string, targetParentId: string, targetIndex: number) => void;
   toggleAutoLayout: (nodeId: string) => void;
   updateAutoLayout: (nodeId: string, patch: Partial<AutoLayout>) => void;
   updateAutoLayoutPadding: (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left', value: number) => void;
@@ -358,6 +360,28 @@ export const createDocumentSlice: StateCreator<
         selectedIds: state.selectedIds.filter((id) => !idsSet.has(id)),
       };
     }),
+
+  reorderNode: (nodeId, targetParentId, targetIndex) =>
+    set((state) => ({
+      documents: state.documents.map((doc) => {
+        if (!findNodeById(doc.rootNode, nodeId)) return doc;
+        return produce(doc, (draft) => {
+          // Remove node from current parent
+          const oldParent = findParentNode(draft.rootNode, nodeId);
+          if (!oldParent) return;
+          const nodeIdx = oldParent.children.findIndex((c) => c.id === nodeId);
+          if (nodeIdx === -1) return;
+          const [node] = oldParent.children.splice(nodeIdx, 1);
+          // Insert into target parent
+          const newParent = targetParentId === draft.rootNode.id
+            ? draft.rootNode
+            : findNodeById(draft.rootNode, targetParentId);
+          if (!newParent) return;
+          const idx = Math.min(targetIndex, newParent.children.length);
+          newParent.children.splice(idx, 0, node);
+        });
+      }),
+    })),
 
   toggleAutoLayout: (nodeId) =>
     set((state) => ({

@@ -6,6 +6,14 @@ import { createUISlice, type UISlice } from './slices/ui-slice';
 import { createHistorySlice, type HistorySlice } from './slices/history-slice';
 import { createPagesSlice, type PagesSlice } from './slices/pages-slice';
 import { createProjectSlice, type ProjectSlice } from './slices/project-slice';
+import type { GuideLine, SpacingIndicator } from '@/lib/canvas/smart-guides';
+
+export interface SmartGuidesSlice {
+  smartGuides: GuideLine[];
+  spacingIndicators: SpacingIndicator[];
+  setSmartGuides: (guides: GuideLine[], spacings: SpacingIndicator[]) => void;
+  clearSmartGuides: () => void;
+}
 
 export type EditorState = ViewportSlice &
   DocumentSlice &
@@ -13,14 +21,23 @@ export type EditorState = ViewportSlice &
   UISlice &
   HistorySlice &
   PagesSlice &
-  ProjectSlice;
+  ProjectSlice &
+  SmartGuidesSlice;
 
-export const useEditorStore = create<EditorState>()((...a) => ({
-  ...createViewportSlice(...a),
-  ...createDocumentSlice(...a),
-  ...createSelectionSlice(...a),
-  ...createUISlice(...a),
-  ...createHistorySlice(...a),
-  ...createPagesSlice(...a),
-  ...createProjectSlice(...a),
-}));
+export const useEditorStore = create<EditorState>()((...a) => {
+  const [set] = a;
+  return {
+    ...createViewportSlice(...a),
+    ...createDocumentSlice(...a),
+    ...createSelectionSlice(...a),
+    ...createUISlice(...a),
+    ...createHistorySlice(...a),
+    ...createPagesSlice(...a),
+    ...createProjectSlice(...a),
+    // Smart guides state
+    smartGuides: [],
+    spacingIndicators: [],
+    setSmartGuides: (guides, spacings) => set({ smartGuides: guides, spacingIndicators: spacings }),
+    clearSmartGuides: () => set({ smartGuides: [], spacingIndicators: [] }),
+  };
+});

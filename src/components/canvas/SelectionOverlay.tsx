@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
+import { getSnappedPosition, getResizeSnap, getEqualSpacing, type SnapRect } from '@/lib/canvas/smart-guides';
 import type { Rect } from '@/types/editor';
 
 interface SelectionBox {
@@ -56,11 +57,19 @@ export const SelectionOverlay: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const dragNodeOriginal = useRef<{ id: string; top: number; left: number }[]>([]);
+  /** Cached sibling screen rects (built once at drag start) */
+  const siblingRectsRef = useRef<SnapRect[]>([]);
+  /** Initial bounding box of all dragged elements in screen space */
+  const dragInitialScreenRect = useRef<SnapRect>({ id: '', x: 0, y: 0, width: 0, height: 0 });
 
   // ── Resize state ──
   const [isResizing, setIsResizing] = useState(false);
   const resizeDir = useRef<ResizeDir>('se');
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, nodeId: '' });
+  /** Cached sibling screen rects for resize snapping */
+  const resizeSiblingRectsRef = useRef<SnapRect[]>([]);
+  /** Initial screen rect of resizing element */
+  const resizeInitScreenRef = useRef<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
 
   // Read DOM rects without causing re-renders on every frame
   useEffect(() => {
@@ -129,15 +138,77 @@ export const SelectionOverlay: React.FC = () => {
       }
     }
 
+    // Cache sibling rects for smart guides (screen space)
+    const selectedSet = new Set(selectedIds);
+    const allEls = document.querySelectorAll('[data-penma-id]');
+    const siblings: SnapRect[] = [];
+    for (const el of allEls) {
+      const id = el.getAttribute('data-penma-id')!;
+      if (selectedSet.has(id)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        siblings.push({ id, x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+    }
+    siblingRectsRef.current = siblings;
+
+    // Cache initial bounding box of dragged elements in screen space
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const id of selectedIds) {
+      const el = document.querySelector(`[data-penma-id="${id}"]`);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        minX = Math.min(minX, r.x);
+        minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.width);
+        maxY = Math.max(maxY, r.y + r.height);
+      }
+    }
+    dragInitialScreenRect.current = { id: '__drag__', x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [editEnabled && editSettings.movable, selectedIds]);
 
   useEffect(() => {
     if (!isDragging) return;
 
+    const setSmartGuides = useEditorStore.getState().setSmartGuides;
+    const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+    /** Track the current snap correction for use in handleUp */
+    let lastSnapDx = 0;
+    let lastSnapDy = 0;
+
     const handleMove = (e: PointerEvent) => {
-      const dx = (e.clientX - dragStart.current.x) / camera.zoom;
-      const dy = (e.clientY - dragStart.current.y) / camera.zoom;
+      const screenDx = e.clientX - dragStart.current.x;
+      const screenDy = e.clientY - dragStart.current.y;
+
+      // Tentative dragged bounding box in screen space
+      const init = dragInitialScreenRect.current;
+      const tentative: SnapRect = {
+        id: '__drag__',
+        x: init.x + screenDx,
+        y: init.y + screenDy,
+        width: init.width,
+        height: init.height,
+      };
+
+      // Compute snap
+      const snap = getSnappedPosition(tentative, siblingRectsRef.current);
+      lastSnapDx = snap.dx;
+      lastSnapDy = snap.dy;
+
+      // Snapped rect for spacing detection
+      const snapped: SnapRect = {
+        ...tentative,
+        x: tentative.x + snap.dx,
+        y: tentative.y + snap.dy,
+      };
+      const spacings = getEqualSpacing(snapped, siblingRectsRef.current);
+      setSmartGuides(snap.guides, spacings);
+
+      // Apply to DOM (convert screen snap correction to document space)
+      const dx = (screenDx + snap.dx) / camera.zoom;
+      const dy = (screenDy + snap.dy) / camera.zoom;
       for (const orig of dragNodeOriginal.current) {
         const el = document.querySelector(`[data-penma-id="${orig.id}"]`) as HTMLElement | null;
         if (el) {
@@ -149,8 +220,11 @@ export const SelectionOverlay: React.FC = () => {
 
     const handleUp = (e: PointerEvent) => {
       setIsDragging(false);
-      const dx = (e.clientX - dragStart.current.x) / camera.zoom;
-      const dy = (e.clientY - dragStart.current.y) / camera.zoom;
+      clearSmartGuides();
+      const screenDx = e.clientX - dragStart.current.x;
+      const screenDy = e.clientY - dragStart.current.y;
+      const dx = (screenDx + lastSnapDx) / camera.zoom;
+      const dy = (screenDy + lastSnapDy) / camera.zoom;
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
         pushHistory('Move element');
         for (const orig of dragNodeOriginal.current) {
@@ -168,6 +242,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      clearSmartGuides();
     };
   }, [isDragging, camera.zoom, pushHistory, updateNodeStyles]);
 
@@ -189,6 +264,21 @@ export const SelectionOverlay: React.FC = () => {
       height: rect.height / camera.zoom,
       nodeId: selectedIds[0],
     };
+    resizeInitScreenRef.current = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+
+    // Cache sibling element screen rects for snapping
+    const nodeId = selectedIds[0];
+    const allEls = document.querySelectorAll('[data-penma-id]');
+    const siblings: SnapRect[] = [];
+    allEls.forEach((sibEl) => {
+      const sibId = sibEl.getAttribute('data-penma-id')!;
+      if (sibId === nodeId) return;
+      const r = sibEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        siblings.push({ id: sibId, x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+    });
+    resizeSiblingRectsRef.current = siblings;
 
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [editEnabled && editSettings.resizable, selectedIds, camera.zoom]);
@@ -196,19 +286,61 @@ export const SelectionOverlay: React.FC = () => {
   useEffect(() => {
     if (!isResizing) return;
 
+    const setSmartGuides = useEditorStore.getState().setSmartGuides;
+    const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+
+    /** Compute tentative screen rect from resize direction and deltas */
+    const computeResizeRect = (dx: number, dy: number): { x: number; y: number; w: number; h: number } => {
+      const dir = resizeDir.current;
+      const init = resizeInitScreenRef.current;
+      let x = init.x;
+      let y = init.y;
+      let w = init.width;
+      let h = init.height;
+      if (dir.includes('e')) w += dx;
+      if (dir.includes('w')) { w -= dx; x += dx; }
+      if (dir.includes('s')) h += dy;
+      if (dir.includes('n')) { h -= dy; y += dy; }
+      w = Math.max(20 * camera.zoom, w);
+      h = Math.max(20 * camera.zoom, h);
+      return { x, y, w, h };
+    };
+
+    let lastSnapDx = 0;
+    let lastSnapDy = 0;
+
     const handleMove = (e: PointerEvent) => {
-      const dx = (e.clientX - resizeStart.current.x) / camera.zoom;
-      const dy = (e.clientY - resizeStart.current.y) / camera.zoom;
+      const screenDx = e.clientX - resizeStart.current.x;
+      const screenDy = e.clientY - resizeStart.current.y;
       const dir = resizeDir.current;
       const el = document.querySelector(`[data-penma-id="${resizeStart.current.nodeId}"]`) as HTMLElement | null;
       if (!el) return;
 
+      // Tentative screen rect
+      const t = computeResizeRect(screenDx, screenDy);
+      const tentative: SnapRect = { id: '__resize__', x: t.x, y: t.y, width: t.w, height: t.h };
+
+      // Snap — only check the edges being resized
+      const resizeEdges = {
+        right: dir.includes('e'),
+        left: dir.includes('w'),
+        bottom: dir.includes('s'),
+        top: dir.includes('n'),
+      };
+      const snap = getResizeSnap(tentative, resizeSiblingRectsRef.current, resizeEdges);
+      lastSnapDx = snap.dx;
+      lastSnapDy = snap.dy;
+      setSmartGuides(snap.guides, []);
+
+      // Compute final doc-space dimensions
       let newW = resizeStart.current.width;
       let newH = resizeStart.current.height;
-      if (dir.includes('e')) newW += dx;
-      if (dir.includes('w')) newW -= dx;
-      if (dir.includes('s')) newH += dy;
-      if (dir.includes('n')) newH -= dy;
+      const adjDx = (screenDx + snap.dx) / camera.zoom;
+      const adjDy = (screenDy + snap.dy) / camera.zoom;
+      if (dir.includes('e')) newW += adjDx;
+      if (dir.includes('w')) newW -= adjDx;
+      if (dir.includes('s')) newH += adjDy;
+      if (dir.includes('n')) newH -= adjDy;
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
       el.style.width = `${newW}px`;
@@ -217,15 +349,19 @@ export const SelectionOverlay: React.FC = () => {
 
     const handleUp = (e: PointerEvent) => {
       setIsResizing(false);
-      const dx = (e.clientX - resizeStart.current.x) / camera.zoom;
-      const dy = (e.clientY - resizeStart.current.y) / camera.zoom;
+      clearSmartGuides();
+
+      const screenDx = e.clientX - resizeStart.current.x;
+      const screenDy = e.clientY - resizeStart.current.y;
       const dir = resizeDir.current;
       let newW = resizeStart.current.width;
       let newH = resizeStart.current.height;
-      if (dir.includes('e')) newW += dx;
-      if (dir.includes('w')) newW -= dx;
-      if (dir.includes('s')) newH += dy;
-      if (dir.includes('n')) newH -= dy;
+      const adjDx = (screenDx + lastSnapDx) / camera.zoom;
+      const adjDy = (screenDy + lastSnapDy) / camera.zoom;
+      if (dir.includes('e')) newW += adjDx;
+      if (dir.includes('w')) newW -= adjDx;
+      if (dir.includes('s')) newH += adjDy;
+      if (dir.includes('n')) newH -= adjDy;
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
       pushHistory('Resize element');
@@ -240,6 +376,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      clearSmartGuides();
     };
   }, [isResizing, camera.zoom, pushHistory, updateNodeStyles]);
 

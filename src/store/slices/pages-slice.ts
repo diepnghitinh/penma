@@ -113,6 +113,13 @@ export const createPagesSlice: StateCreator<
         selectedIds: targetPage.selectedIds,
         camera: targetPage.camera,
       });
+
+      // Update URL query string with active page
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', pageId);
+        window.history.replaceState(null, '', url.toString());
+      }
     },
 
     duplicatePage: (pageId) => {
