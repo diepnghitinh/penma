@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById } from '@/lib/utils/tree-utils';
 import { getEffectiveStyle } from '@/lib/styles/style-resolver';
@@ -16,7 +16,7 @@ const CSS_PROPS = [
   'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
 ];
 
-/** Read-only panel showing element attributes in view mode */
+/** Editable panel showing element attributes in view mode */
 export const ElementAttributePanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -108,20 +108,7 @@ export const ElementAttributePanel: React.FC = () => {
         </div>
 
         {/* Position & Size */}
-        <AttrSection
-          title="Position & Size"
-          cssEntries={[
-            ['left', `${Math.round(selectedNode.bounds.x)}px`],
-            ['top', `${Math.round(selectedNode.bounds.y)}px`],
-            ['width', `${Math.round(selectedNode.bounds.width)}px`],
-            ['height', `${Math.round(selectedNode.bounds.height)}px`],
-          ]}
-        >
-          <AttrRow label="X" value={`${Math.round(selectedNode.bounds.x)}`} />
-          <AttrRow label="Y" value={`${Math.round(selectedNode.bounds.y)}`} />
-          <AttrRow label="W" value={`${Math.round(selectedNode.bounds.width)}`} />
-          <AttrRow label="H" value={`${Math.round(selectedNode.bounds.height)}`} />
-        </AttrSection>
+        <PositionSizeSection node={selectedNode} />
 
         {/* Typography (for text elements) */}
         {selectedNode.tagName === 'span' && selectedNode.textContent && selectedNode.children.length === 0 && (
@@ -138,13 +125,7 @@ export const ElementAttributePanel: React.FC = () => {
         <LayoutSection node={selectedNode} />
 
         {/* HTML Attributes */}
-        {Object.keys(selectedNode.attributes).length > 0 && (
-          <AttrSection title="Attributes">
-            {Object.entries(selectedNode.attributes).map(([key, value]) => (
-              <AttrRow key={key} label={key} value={value} />
-            ))}
-          </AttrSection>
-        )}
+        <HtmlAttributesSection node={selectedNode} />
       </div>
     </div>
   );
@@ -152,13 +133,56 @@ export const ElementAttributePanel: React.FC = () => {
 
 // ── Sub-sections ─────────────────────────────────────────────
 
+const PositionSizeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+
+  const handleBoundsChange = useCallback(
+    (field: 'x' | 'y' | 'width' | 'height', value: string) => {
+      const num = parseFloat(value);
+      if (isNaN(num)) return;
+      pushHistory(`Change ${field}`);
+      updateNodeBounds(node.id, { [field]: num });
+    },
+    [node.id, updateNodeBounds, pushHistory]
+  );
+
+  return (
+    <AttrSection
+      title="Position & Size"
+      cssEntries={[
+        ['left', `${Math.round(node.bounds.x)}px`],
+        ['top', `${Math.round(node.bounds.y)}px`],
+        ['width', `${Math.round(node.bounds.width)}px`],
+        ['height', `${Math.round(node.bounds.height)}px`],
+      ]}
+    >
+      <EditableAttrRow label="X" value={`${Math.round(node.bounds.x)}`} onCommit={(v) => handleBoundsChange('x', v)} />
+      <EditableAttrRow label="Y" value={`${Math.round(node.bounds.y)}`} onCommit={(v) => handleBoundsChange('y', v)} />
+      <EditableAttrRow label="W" value={`${Math.round(node.bounds.width)}`} onCommit={(v) => handleBoundsChange('width', v)} />
+      <EditableAttrRow label="H" value={`${Math.round(node.bounds.height)}`} onCommit={(v) => handleBoundsChange('height', v)} />
+    </AttrSection>
+  );
+};
+
 const TypographySection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+
   const fontFamily = getEffectiveStyle(node.styles, 'font-family') || '';
   const fontSize = getEffectiveStyle(node.styles, 'font-size') || '';
   const fontWeight = getEffectiveStyle(node.styles, 'font-weight') || '';
   const lineHeight = getEffectiveStyle(node.styles, 'line-height') || '';
   const letterSpacing = getEffectiveStyle(node.styles, 'letter-spacing') || '';
   const color = getEffectiveStyle(node.styles, 'color') || '';
+
+  const handleChange = useCallback(
+    (prop: string, value: string) => {
+      pushHistory(`Change ${prop}`);
+      updateNodeStyles(node.id, { [prop]: value });
+    },
+    [node.id, updateNodeStyles, pushHistory]
+  );
 
   const entries: [string, string][] = [];
   if (fontFamily) entries.push(['font-family', fontFamily]);
@@ -170,28 +194,42 @@ const TypographySection: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   return (
     <AttrSection title="Typography" cssEntries={entries}>
-      {fontFamily && <AttrRow label="Font" value={fontFamily.split(',')[0].replace(/['"]/g, '')} />}
-      {fontSize && <AttrRow label="Size" value={fontSize} />}
-      {fontWeight && <AttrRow label="Weight" value={fontWeight} />}
-      {lineHeight && <AttrRow label="Line H" value={lineHeight} />}
-      {letterSpacing && letterSpacing !== 'normal' && <AttrRow label="Spacing" value={letterSpacing} />}
-      {color && <AttrRow label="Color" value={color} colorPreview />}
+      {fontFamily && <EditableAttrRow label="Font" value={fontFamily.split(',')[0].replace(/['"]/g, '')} onCommit={(v) => handleChange('font-family', v)} />}
+      {fontSize && <EditableAttrRow label="Size" value={fontSize} onCommit={(v) => handleChange('font-size', v)} />}
+      {fontWeight && <EditableAttrRow label="Weight" value={fontWeight} onCommit={(v) => handleChange('font-weight', v)} />}
+      {lineHeight && <EditableAttrRow label="Line H" value={lineHeight} onCommit={(v) => handleChange('line-height', v)} />}
+      {letterSpacing && letterSpacing !== 'normal' && <EditableAttrRow label="Spacing" value={letterSpacing} onCommit={(v) => handleChange('letter-spacing', v)} />}
+      {color && <EditableAttrRow label="Color" value={color} colorPreview onCommit={(v) => handleChange('color', v)} />}
     </AttrSection>
   );
 };
 
 const FillSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+
   const bgColor = getEffectiveStyle(node.styles, 'background-color') || '';
   if (!bgColor || bgColor === 'transparent' || bgColor === 'rgba(0, 0, 0, 0)') return null;
 
+  const handleChange = useCallback(
+    (value: string) => {
+      pushHistory('Change background-color');
+      updateNodeStyles(node.id, { 'background-color': value });
+    },
+    [node.id, updateNodeStyles, pushHistory]
+  );
+
   return (
     <AttrSection title="Fill" cssEntries={[['background-color', bgColor]]}>
-      <AttrRow label="Background" value={bgColor} colorPreview />
+      <EditableAttrRow label="Background" value={bgColor} colorPreview onCommit={handleChange} />
     </AttrSection>
   );
 };
 
 const StrokeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+
   const bw = getEffectiveStyle(node.styles, 'border-top-width') || '0';
   if (bw === '0' || bw === '0px') return null;
 
@@ -199,20 +237,31 @@ const StrokeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const bs = getEffectiveStyle(node.styles, 'border-top-style') || '';
   if (bs === 'none') return null;
 
+  const handleChange = useCallback(
+    (prop: string, value: string) => {
+      pushHistory(`Change ${prop}`);
+      updateNodeStyles(node.id, { [prop]: value });
+    },
+    [node.id, updateNodeStyles, pushHistory]
+  );
+
   const entries: [string, string][] = [['border-width', bw]];
   if (bc) entries.push(['border-color', bc]);
   if (bs) entries.push(['border-style', bs]);
 
   return (
     <AttrSection title="Stroke" cssEntries={entries}>
-      <AttrRow label="Width" value={bw} />
-      {bc && <AttrRow label="Color" value={bc} colorPreview />}
-      {bs && <AttrRow label="Style" value={bs} />}
+      <EditableAttrRow label="Width" value={bw} onCommit={(v) => handleChange('border-top-width', v)} />
+      {bc && <EditableAttrRow label="Color" value={bc} colorPreview onCommit={(v) => handleChange('border-top-color', v)} />}
+      {bs && <EditableAttrRow label="Style" value={bs} onCommit={(v) => handleChange('border-top-style', v)} />}
     </AttrSection>
   );
 };
 
 const LayoutSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+
   const display = getEffectiveStyle(node.styles, 'display') || '';
   const position = getEffectiveStyle(node.styles, 'position') || '';
   const overflow = getEffectiveStyle(node.styles, 'overflow') || '';
@@ -221,6 +270,14 @@ const LayoutSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const hasContent = display || position || overflow || opacity || borderRadius;
   if (!hasContent) return null;
+
+  const handleChange = useCallback(
+    (prop: string, value: string) => {
+      pushHistory(`Change ${prop}`);
+      updateNodeStyles(node.id, { [prop]: value });
+    },
+    [node.id, updateNodeStyles, pushHistory]
+  );
 
   const entries: [string, string][] = [];
   if (display) entries.push(['display', display]);
@@ -231,11 +288,103 @@ const LayoutSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   return (
     <AttrSection title="Layout" cssEntries={entries}>
-      {display && <AttrRow label="Display" value={display} />}
-      {position && position !== 'static' && <AttrRow label="Position" value={position} />}
-      {overflow && overflow !== 'visible' && <AttrRow label="Overflow" value={overflow} />}
-      {opacity && opacity !== '1' && <AttrRow label="Opacity" value={opacity} />}
-      {borderRadius && borderRadius !== '0px' && <AttrRow label="Radius" value={borderRadius} />}
+      {display && <EditableAttrRow label="Display" value={display} onCommit={(v) => handleChange('display', v)} />}
+      {position && position !== 'static' && <EditableAttrRow label="Position" value={position} onCommit={(v) => handleChange('position', v)} />}
+      {overflow && overflow !== 'visible' && <EditableAttrRow label="Overflow" value={overflow} onCommit={(v) => handleChange('overflow', v)} />}
+      {opacity && opacity !== '1' && <EditableAttrRow label="Opacity" value={opacity} onCommit={(v) => handleChange('opacity', v)} />}
+      {borderRadius && borderRadius !== '0px' && <EditableAttrRow label="Radius" value={borderRadius} onCommit={(v) => handleChange('border-radius', v)} />}
+    </AttrSection>
+  );
+};
+
+const HtmlAttributesSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
+  const updateNodeAttributes = useEditorStore((s) => s.updateNodeAttributes);
+  const removeNodeAttribute = useEditorStore((s) => s.removeNodeAttribute);
+  const pushHistory = useEditorStore((s) => s.pushHistory);
+  const [newKey, setNewKey] = useState('');
+  const [newValue, setNewValue] = useState('');
+
+  const handleChange = useCallback(
+    (key: string, value: string) => {
+      pushHistory(`Change attribute ${key}`);
+      updateNodeAttributes(node.id, { [key]: value });
+    },
+    [node.id, updateNodeAttributes, pushHistory]
+  );
+
+  const handleRemove = useCallback(
+    (key: string) => {
+      pushHistory(`Remove attribute ${key}`);
+      removeNodeAttribute(node.id, key);
+    },
+    [node.id, removeNodeAttribute, pushHistory]
+  );
+
+  const handleAdd = useCallback(() => {
+    const key = newKey.trim();
+    if (!key) return;
+    pushHistory(`Add attribute ${key}`);
+    updateNodeAttributes(node.id, { [key]: newValue });
+    setNewKey('');
+    setNewValue('');
+  }, [node.id, newKey, newValue, updateNodeAttributes, pushHistory]);
+
+  const attrs = Object.entries(node.attributes);
+
+  return (
+    <AttrSection title="Attributes">
+      {attrs.map(([key, value]) => (
+        <EditableAttrRow
+          key={key}
+          label={key}
+          value={value}
+          onCommit={(v) => handleChange(key, v)}
+          onRemove={() => handleRemove(key)}
+        />
+      ))}
+      {/* Add new attribute row */}
+      <div className="flex items-center gap-1 py-1 mt-1" style={{ borderTop: attrs.length > 0 ? '1px solid var(--penma-border)' : undefined }}>
+        <input
+          type="text"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          placeholder="name"
+          className="w-16 shrink-0 rounded px-1 py-0.5 text-[10px]"
+          style={{
+            color: 'var(--penma-text)',
+            background: 'var(--penma-bg-secondary, rgba(0,0,0,0.04))',
+            border: '1px solid var(--penma-border)',
+            outline: 'none',
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+        <input
+          type="text"
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          placeholder="value"
+          className="flex-1 rounded px-1 py-0.5 text-[10px]"
+          style={{
+            color: 'var(--penma-text)',
+            background: 'var(--penma-bg-secondary, rgba(0,0,0,0.04))',
+            border: '1px solid var(--penma-border)',
+            outline: 'none',
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+        <button
+          onClick={handleAdd}
+          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer"
+          style={{
+            color: 'var(--penma-text-muted)',
+            border: '1px solid var(--penma-border)',
+            background: 'transparent',
+          }}
+          title="Add attribute"
+        >
+          +
+        </button>
+      </div>
     </AttrSection>
   );
 };
@@ -312,11 +461,50 @@ function parseColorToHex(color: string): string | null {
   return null;
 }
 
-const AttrRow: React.FC<{ label: string; value: string; colorPreview?: boolean }> = ({ label, value, colorPreview }) => {
+/** Editable attribute row — click to edit, Enter/blur to commit */
+const EditableAttrRow: React.FC<{
+  label: string;
+  value: string;
+  colorPreview?: boolean;
+  onCommit: (value: string) => void;
+  onRemove?: () => void;
+}> = ({ label, value, colorPreview, onCommit, onRemove }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
   const hex = colorPreview ? parseColorToHex(value) : null;
 
+  // Sync draft when value changes externally
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  // Auto-focus input when editing starts
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commit = useCallback(() => {
+    setEditing(false);
+    if (draft !== value) {
+      onCommit(draft);
+    }
+  }, [draft, value, onCommit]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      commit();
+    } else if (e.key === 'Escape') {
+      setDraft(value);
+      setEditing(false);
+    }
+  }, [commit, value]);
+
   return (
-    <div className="flex items-center gap-2 py-0.5">
+    <div className="group/row flex items-center gap-2 py-0.5">
       <span className="w-20 shrink-0 text-[11px]" style={{ color: 'var(--penma-text-muted)' }}>
         {label}
       </span>
@@ -327,13 +515,42 @@ const AttrRow: React.FC<{ label: string; value: string; colorPreview?: boolean }
             style={{ backgroundColor: hex, border: '1px solid var(--penma-border)' }}
           />
         )}
-        <span
-          className="text-[11px] truncate select-all cursor-text"
-          style={{ color: 'var(--penma-text)' }}
-          title={value}
-        >
-          {value}
-        </span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={handleKeyDown}
+            className="flex-1 rounded px-1 py-0 text-[11px] min-w-0"
+            style={{
+              color: 'var(--penma-text)',
+              background: 'var(--penma-bg-secondary, rgba(0,0,0,0.04))',
+              border: '1px solid var(--penma-accent, #2563eb)',
+              outline: 'none',
+            }}
+          />
+        ) : (
+          <span
+            className="text-[11px] truncate select-all cursor-text flex-1"
+            style={{ color: 'var(--penma-text)' }}
+            title={`${value} (click to edit)`}
+            onClick={() => setEditing(true)}
+          >
+            {value}
+          </span>
+        )}
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            className="shrink-0 rounded px-0.5 text-[10px] cursor-pointer opacity-0 group-hover/row:opacity-100"
+            style={{ color: 'var(--penma-text-muted)', transition: 'opacity 100ms' }}
+            title="Remove attribute"
+          >
+            <TrashIcon />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -351,5 +568,11 @@ const CopyIcon: React.FC = () => (
 const CheckIcon: React.FC = () => (
   <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2.5 6.5L5 9L9.5 3" />
+  </svg>
+);
+
+const TrashIcon: React.FC = () => (
+  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 3h8M4.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M9 3v7a1 1 0 01-1 1H4a1 1 0 01-1-1V3" />
   </svg>
 );

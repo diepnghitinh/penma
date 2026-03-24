@@ -49,6 +49,10 @@ export interface DocumentSlice {
   createComponentRef: (nodeId: string) => void;
   /** Detach an instance, making it a regular editable node */
   detachComponent: (nodeId: string) => void;
+  /** Update HTML attributes on a node */
+  updateNodeAttributes: (nodeId: string, attributes: Record<string, string>) => void;
+  /** Remove an HTML attribute from a node */
+  removeNodeAttribute: (nodeId: string, key: string) => void;
   /** Check if a node is a component instance (ref) */
   isComponentRef: (nodeId: string) => boolean;
 }
@@ -362,26 +366,66 @@ export const createDocumentSlice: StateCreator<
     }),
 
   reorderNode: (nodeId, targetParentId, targetIndex) =>
-    set((state) => ({
-      documents: state.documents.map((doc) => {
-        if (!findNodeById(doc.rootNode, nodeId)) return doc;
-        return produce(doc, (draft) => {
-          // Remove node from current parent
-          const oldParent = findParentNode(draft.rootNode, nodeId);
-          if (!oldParent) return;
-          const nodeIdx = oldParent.children.findIndex((c) => c.id === nodeId);
-          if (nodeIdx === -1) return;
-          const [node] = oldParent.children.splice(nodeIdx, 1);
-          // Insert into target parent
-          const newParent = targetParentId === draft.rootNode.id
-            ? draft.rootNode
-            : findNodeById(draft.rootNode, targetParentId);
-          if (!newParent) return;
-          const idx = Math.min(targetIndex, newParent.children.length);
-          newParent.children.splice(idx, 0, node);
-        });
-      }),
-    })),
+    set((state) => {
+      // Find source document and target document
+      let sourceDocIdx = -1;
+      let targetDocIdx = -1;
+      for (let i = 0; i < state.documents.length; i++) {
+        if (findNodeById(state.documents[i].rootNode, nodeId)) sourceDocIdx = i;
+        if (state.documents[i].rootNode.id === targetParentId || findNodeById(state.documents[i].rootNode, targetParentId)) targetDocIdx = i;
+      }
+      if (sourceDocIdx === -1 || targetDocIdx === -1) return state;
+
+      if (sourceDocIdx === targetDocIdx) {
+        // Same document — move within tree
+        return {
+          documents: state.documents.map((doc, i) => {
+            if (i !== sourceDocIdx) return doc;
+            return produce(doc, (draft) => {
+              const oldParent = findParentNode(draft.rootNode, nodeId);
+              if (!oldParent) return;
+              const nodeIdx = oldParent.children.findIndex((c) => c.id === nodeId);
+              if (nodeIdx === -1) return;
+              const [node] = oldParent.children.splice(nodeIdx, 1);
+              const newParent = targetParentId === draft.rootNode.id
+                ? draft.rootNode
+                : findNodeById(draft.rootNode, targetParentId);
+              if (!newParent) return;
+              const idx = Math.min(targetIndex, newParent.children.length);
+              newParent.children.splice(idx, 0, node);
+            });
+          }),
+        };
+      }
+
+      // Cross-document move — remove from source, insert into target
+      let movedNode: PenmaNode | null = null;
+      const newDocs = state.documents.map((doc, i) => {
+        if (i === sourceDocIdx) {
+          return produce(doc, (draft) => {
+            const oldParent = findParentNode(draft.rootNode, nodeId);
+            if (!oldParent) return;
+            const nodeIdx = oldParent.children.findIndex((c) => c.id === nodeId);
+            if (nodeIdx === -1) return;
+            [movedNode] = oldParent.children.splice(nodeIdx, 1);
+          });
+        }
+        return doc;
+      }).map((doc, i) => {
+        if (i === targetDocIdx && movedNode) {
+          return produce(doc, (draft) => {
+            const newParent = targetParentId === draft.rootNode.id
+              ? draft.rootNode
+              : findNodeById(draft.rootNode, targetParentId);
+            if (!newParent) return;
+            const idx = Math.min(targetIndex, newParent.children.length);
+            newParent.children.splice(idx, 0, movedNode!);
+          });
+        }
+        return doc;
+      });
+      return { documents: newDocs };
+    }),
 
   toggleAutoLayout: (nodeId) =>
     set((state) => ({
@@ -572,6 +616,30 @@ export const createDocumentSlice: StateCreator<
         });
       }),
     })),
+
+  updateNodeAttributes: (nodeId, attributes) =>
+    set((state) => {
+      if (isInstanceNode(state.documents, nodeId)) return state;
+      return {
+        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+          updateNodeById(draft.rootNode, nodeId, (node) => {
+            Object.assign(node.attributes, attributes);
+          });
+        }),
+      };
+    }),
+
+  removeNodeAttribute: (nodeId, key) =>
+    set((state) => {
+      if (isInstanceNode(state.documents, nodeId)) return state;
+      return {
+        documents: mutateNodeInDocs(state.documents, nodeId, (draft) => {
+          updateNodeById(draft.rootNode, nodeId, (node) => {
+            delete node.attributes[key];
+          });
+        }),
+      };
+    }),
 
   isComponentRef: (nodeId) => {
     const state = get();

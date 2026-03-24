@@ -26,7 +26,8 @@
       "Bash(node:*)",
       "Bash(ls -la src/lib/db/models/font.ts src/lib/import/extract-fonts.ts src/app/api/fonts/[id]/route.ts src/components/canvas/FontLoader.tsx)",
       "Bash(grep -r \"pixel\\\\|rendered\\\\|scaled\\\\|transform\" /Volumes/DEVELOP/GITHUB/html2design/src/components/canvas/*.tsx)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cat:*)"
     ]
   }
 }
