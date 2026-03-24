@@ -13,9 +13,11 @@ import { ImportUrlDialog } from '@/components/dialogs/ImportUrlDialog';
 import { ResizablePanel } from '@/components/ui/ResizablePanel';
 import { PageTabs } from '@/components/toolbar/PageTabs';
 import { CanvasContextMenu } from '@/components/canvas/ContextMenu';
+import { ElementAttributePanel } from '@/components/panels/ElementAttributePanel';
 
 export const EditorShell: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
   const openPanels = useEditorStore((s) => s.openPanels);
+  const hasSelection = useEditorStore((s) => s.selectedIds.length > 0);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -233,6 +235,13 @@ export const EditorShell: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
             ) : (
               <StylePanel />
             )}
+          </ResizablePanel>
+        )}
+
+        {/* Read-only inspect panel — shown when element selected in view mode */}
+        {readOnly && hasSelection && (
+          <ResizablePanel side="right" defaultWidth={260} minWidth={200} maxWidth={400}>
+            <ElementAttributePanel />
           </ResizablePanel>
         )}
       </div>

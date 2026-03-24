@@ -81,9 +81,7 @@ const ToolDropdown: React.FC<{
   activeId: Tool;
   onSelect: (id: Tool) => void;
   onClose: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
-}> = ({ items, activeId, onSelect, onClose, onMouseEnter, onMouseLeave }) => {
+}> = ({ items, activeId, onSelect, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,8 +96,6 @@ const ToolDropdown: React.FC<{
     <div
       ref={ref}
       className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 rounded-2xl overflow-hidden"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
       style={{
         background: 'linear-gradient(135deg, #383838 0%, #2A2A2A 100%)',
         boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset',
@@ -115,7 +111,7 @@ const ToolDropdown: React.FC<{
         return (
           <button
             key={item.id}
-            className="flex w-full items-start cursor-pointer"
+            className="flex w-full items-center cursor-pointer"
             style={{
               padding: '8px 14px',
               gap: 12,
@@ -140,6 +136,7 @@ const ToolDropdown: React.FC<{
               fontWeight: isActive ? 500 : 400,
               color: isActive ? 'white' : 'rgba(255,255,255,0.85)',
               letterSpacing: '-0.01em',
+              textAlign: 'left',
             }}>
               {item.label}
             </span>
@@ -203,23 +200,8 @@ export const BottomToolbar: React.FC = () => {
     setOpenGroup(null);
   }, [selectedPerGroup, setActiveTool, editEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleChevronEnter = useCallback((gi: number) => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-    setOpenGroup(gi);
-  }, []);
-
-  const handleChevronLeave = useCallback(() => {
-    hoverTimeout.current = setTimeout(() => setOpenGroup(null), 200);
-  }, []);
-
-  const handleDropdownEnter = useCallback(() => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-  }, []);
-
-  const handleDropdownLeave = useCallback(() => {
-    hoverTimeout.current = setTimeout(() => setOpenGroup(null), 150);
+  const handleChevronClick = useCallback((gi: number) => {
+    setOpenGroup((prev) => (prev === gi ? null : gi));
   }, []);
 
   return (
@@ -280,8 +262,9 @@ export const BottomToolbar: React.FC = () => {
                     opacity: 0.6,
                     transition: 'opacity 100ms',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; handleChevronEnter(gi); }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; handleChevronLeave(); }}
+                  onClick={() => handleChevronClick(gi)}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
                 >
                   <ChevronDown size={12} />
                 </button>
@@ -294,8 +277,6 @@ export const BottomToolbar: React.FC = () => {
                   activeId={activeTool}
                   onSelect={(id) => { setActiveTool(id); setOpenGroup(null); }}
                   onClose={() => setOpenGroup(null)}
-                  onMouseEnter={handleDropdownEnter}
-                  onMouseLeave={handleDropdownLeave}
                 />
               )}
             </div>
