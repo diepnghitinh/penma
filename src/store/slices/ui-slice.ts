@@ -137,15 +137,23 @@ export const createUISlice: StateCreator<
   },
 });
 
-/** Deep clone a node tree with all children, assigning new UUIDs to every node */
+/** Deep clone a node tree with all children, assigning new UUIDs to every node.
+ *  If the source is a master component, the clone becomes a component reference. */
 function cloneWithNewIds(node: PenmaNode): PenmaNode {
   const deep: PenmaNode = JSON.parse(JSON.stringify(node));
-  const assignIds = (n: PenmaNode) => {
+  const masterCompId = deep.componentId; // save before clearing
+  const assignIds = (n: PenmaNode, isRoot: boolean) => {
+    if (n.sourceNodeId === undefined) n.sourceNodeId = n.id;
     n.id = uuid();
-    // Clear component refs on paste — pasted nodes are independent copies
     n.componentRef = undefined;
-    for (const child of n.children) assignIds(child);
+    n.componentId = undefined;
+    n.instanceOverrides = undefined;
+    for (const child of n.children) assignIds(child, false);
+    // If root was a master component, make the clone a reference to it
+    if (isRoot && masterCompId) {
+      n.componentRef = masterCompId;
+    }
   };
-  assignIds(deep);
+  assignIds(deep, true);
   return deep;
 }
