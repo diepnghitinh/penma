@@ -20,7 +20,6 @@ export const SelectionOverlay: React.FC = () => {
   const editEnabled = useEditorStore((s) => s.editEnabled);
   const editSettings = useEditorStore((s) => s.editSettings);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const documents = useEditorStore((s) => s.documents);
@@ -175,9 +174,12 @@ export const SelectionOverlay: React.FC = () => {
 
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+    const updateNodeBounds = useEditorStore.getState().updateNodeBounds;
     /** Track the current snap correction for use in handleUp */
     let lastSnapDx = 0;
     let lastSnapDy = 0;
+    /** RAF id for throttled bounds sync */
+    let boundsSyncRaf = 0;
 
     const handleMove = (e: PointerEvent) => {
       const screenDx = e.clientX - dragStart.current.x;
@@ -217,11 +219,23 @@ export const SelectionOverlay: React.FC = () => {
           el.style.left = `${orig.left + dx}px`;
         }
       }
+
+      // Live-sync bounds to store (throttled via RAF) so sidebar updates in real-time
+      cancelAnimationFrame(boundsSyncRaf);
+      boundsSyncRaf = requestAnimationFrame(() => {
+        for (const orig of dragNodeOriginal.current) {
+          updateNodeBounds(orig.id, {
+            x: Math.round(orig.left + dx),
+            y: Math.round(orig.top + dy),
+          });
+        }
+      });
     };
 
     const handleUp = (e: PointerEvent) => {
       setIsDragging(false);
       clearSmartGuides();
+      cancelAnimationFrame(boundsSyncRaf);
       const screenDx = e.clientX - dragStart.current.x;
       const screenDy = e.clientY - dragStart.current.y;
       const dx = (screenDx + lastSnapDx) / camera.zoom;
@@ -234,15 +248,10 @@ export const SelectionOverlay: React.FC = () => {
             top: `${orig.top + dy}px`,
             left: `${orig.left + dx}px`,
           });
-          // Sync bounds so sidebar attributes stay in sync
-          const el = document.querySelector(`[data-penma-id="${orig.id}"]`) as HTMLElement | null;
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            updateNodeBounds(orig.id, {
-              x: Math.round(rect.x / camera.zoom),
-              y: Math.round(rect.y / camera.zoom),
-            });
-          }
+          updateNodeBounds(orig.id, {
+            x: Math.round(orig.left + dx),
+            y: Math.round(orig.top + dy),
+          });
         }
       }
     };
@@ -252,6 +261,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      cancelAnimationFrame(boundsSyncRaf);
       clearSmartGuides();
     };
   }, [isDragging, camera.zoom, pushHistory, updateNodeStyles]);
@@ -298,6 +308,7 @@ export const SelectionOverlay: React.FC = () => {
 
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+    const updateNodeBounds = useEditorStore.getState().updateNodeBounds;
 
     /** Compute tentative screen rect from resize direction and deltas */
     const computeResizeRect = (dx: number, dy: number): { x: number; y: number; w: number; h: number } => {
@@ -318,6 +329,8 @@ export const SelectionOverlay: React.FC = () => {
 
     let lastSnapDx = 0;
     let lastSnapDy = 0;
+    /** RAF id for throttled bounds sync */
+    let boundsSyncRaf = 0;
 
     const handleMove = (e: PointerEvent) => {
       const screenDx = e.clientX - resizeStart.current.x;
@@ -355,11 +368,23 @@ export const SelectionOverlay: React.FC = () => {
       newH = Math.max(20, newH);
       el.style.width = `${newW}px`;
       el.style.height = `${newH}px`;
+
+      // Live-sync bounds to store (throttled via RAF) so sidebar updates in real-time
+      const syncW = newW;
+      const syncH = newH;
+      cancelAnimationFrame(boundsSyncRaf);
+      boundsSyncRaf = requestAnimationFrame(() => {
+        updateNodeBounds(resizeStart.current.nodeId, {
+          width: Math.round(syncW),
+          height: Math.round(syncH),
+        });
+      });
     };
 
     const handleUp = (e: PointerEvent) => {
       setIsResizing(false);
       clearSmartGuides();
+      cancelAnimationFrame(boundsSyncRaf);
 
       const screenDx = e.clientX - resizeStart.current.x;
       const screenDy = e.clientY - resizeStart.current.y;
@@ -380,17 +405,10 @@ export const SelectionOverlay: React.FC = () => {
         width: `${Math.round(newW)}px`,
         height: `${Math.round(newH)}px`,
       });
-      // Sync bounds so sidebar attributes stay in sync
-      const el = document.querySelector(`[data-penma-id="${nodeId}"]`) as HTMLElement | null;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        updateNodeBounds(nodeId, {
-          x: Math.round(rect.x / camera.zoom),
-          y: Math.round(rect.y / camera.zoom),
-          width: Math.round(newW),
-          height: Math.round(newH),
-        });
-      }
+      updateNodeBounds(nodeId, {
+        width: Math.round(newW),
+        height: Math.round(newH),
+      });
     };
 
     window.addEventListener('pointermove', handleMove);
@@ -398,6 +416,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      cancelAnimationFrame(boundsSyncRaf);
       clearSmartGuides();
     };
   }, [isResizing, camera.zoom, pushHistory, updateNodeStyles]);
