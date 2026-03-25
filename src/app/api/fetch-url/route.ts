@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   // ── Non-streaming import ────────────────────────────────────
 
   try {
-    const { tree: serializedTree, fonts: extractedFonts } = await scrapePage({
+    const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
       url: parsedUrl,
       viewportWidth,
       viewportHeight,
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       serializedTree,
       parsedUrl.toString(),
       { width: viewportWidth, height: viewportHeight },
+      cssRules,
     );
 
     // Download and store fonts in MongoDB
@@ -88,7 +89,7 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
       }
 
       try {
-        const { tree: serializedTree, fonts: extractedFonts } = await scrapePage({
+        const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
           url: parsedUrl,
           viewportWidth,
           viewportHeight,
@@ -102,6 +103,7 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
           serializedTree,
           parsedUrl.toString(),
           { width: viewportWidth, height: viewportHeight },
+          cssRules,
         );
 
         // Download and store fonts in MongoDB

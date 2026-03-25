@@ -30,7 +30,7 @@ import {
 import { useEditorStore } from '@/store/editor-store';
 import { findNodeById, flattenTree } from '@/lib/utils/tree-utils';
 import { getEffectiveStyles } from '@/lib/styles/style-resolver';
-import type { PenmaNode } from '@/types/document';
+import type { PenmaNode, PenmaDocument, CssRuleEntry } from '@/types/document';
 
 interface ContextMenuState {
   x: number;
@@ -84,6 +84,7 @@ export const CanvasContextMenu: React.FC = () => {
   }, [menu]);
 
   const [devRuleNode, setDevRuleNode] = useState<PenmaNode | null>(null);
+  const [devRuleDoc, setDevRuleDoc] = useState<PenmaDocument | null>(null);
 
   const close = useCallback(() => { setMenu(null); setSubMenu(null); }, []);
 
@@ -382,8 +383,14 @@ export const CanvasContextMenu: React.FC = () => {
                 className="flex w-full items-center gap-2 px-3 py-1.5 cursor-pointer text-left"
                 style={{ transition: 'var(--transition-fast)' }}
                 onClick={() => {
-                  if (targetNode) {
+                  if (targetNode && menu) {
                     setDevRuleNode(targetNode);
+                    // Find the parent document for CSS rules access
+                    const docs = useEditorStore.getState().documents;
+                    for (const doc of docs) {
+                      const found = findNodeById(doc.rootNode, menu.nodeId);
+                      if (found) { setDevRuleDoc(doc); break; }
+                    }
                     setMenu(null);
                     setSubMenu(null);
                   }
@@ -420,7 +427,7 @@ export const CanvasContextMenu: React.FC = () => {
 
       {/* Dev: Mapping Rule Dialog (rendered outside menu so it persists after menu closes) */}
       {devRuleNode && (
-        <DevMappingRuleDialog node={devRuleNode} onClose={() => setDevRuleNode(null)} />
+        <DevMappingRuleDialog node={devRuleNode} document={devRuleDoc} onClose={() => { setDevRuleNode(null); setDevRuleDoc(null); }} />
       )}
     </>
   );
@@ -552,16 +559,27 @@ function extractNodeMatchData(node: PenmaNode) {
       cssMatch[prop] = val;
     }
   }
+  // Use stored cssClasses if available, else fall back to class attribute
+  const classes = node.cssClasses || node.attributes.class?.split(' ').filter(Boolean) || [];
   return {
     tag: node.tagName,
-    classPattern: node.attributes.class?.split(' ').filter(Boolean).slice(0, 3).join('|') || '',
+    cssClasses: classes,
+    classPattern: classes.slice(0, 3).join('|'),
     cssMatch,
     hasText: !!node.textContent || node.children.some((c) => !!c.textContent),
   };
 }
 
-const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> = ({ node, onClose }) => {
+const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument | null; onClose: () => void }> = ({ node, document: parentDoc, onClose }) => {
   const matchData = React.useMemo(() => extractNodeMatchData(node), [node]);
+
+  // Get original CSS rules that matched this node
+  const originalRules = React.useMemo(() => {
+    if (!parentDoc?.cssRules || !node.matchedCssRules) return [];
+    return node.matchedCssRules
+      .filter((i) => i < parentDoc.cssRules!.length)
+      .map((i) => parentDoc.cssRules![i]);
+  }, [parentDoc, node.matchedCssRules]);
 
   const [name, setName] = useState(node.name || node.tagName);
   const [description, setDescription] = useState('');
@@ -588,7 +606,7 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> =
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [tab, setTab] = useState<'match' | 'transform' | 'figma'>('match');
+  const [tab, setTab] = useState<'match' | 'css' | 'transform' | 'figma'>('match');
 
   const handleSave = async () => {
     setSaving(true);
@@ -648,7 +666,7 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> =
   };
 
   const CATEGORIES = ['general', 'layout', 'typography', 'color', 'component', 'figma', 'cleanup'];
-  const tabColor = { match: '#3B82F6', transform: '#8B5CF6', figma: '#F97316' };
+  const tabColor = { match: '#3B82F6', css: '#22C55E', transform: '#8B5CF6', figma: '#F97316' };
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm" style={{ zIndex: 'var(--z-modal-overlay)' }}>
@@ -695,7 +713,7 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> =
 
           {/* Tab bar */}
           <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--penma-bg)' }}>
-            {(['match', 'transform', 'figma'] as const).map((t) => (
+            {(['match', 'css', 'transform', 'figma'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -707,9 +725,10 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> =
                 }}
               >
                 {t === 'match' && <Tag size={11} />}
+                {t === 'css' && <Code2 size={11} />}
                 {t === 'transform' && <ArrowRightLeft size={11} />}
                 {t === 'figma' && <Sparkles size={11} />}
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {t === 'css' ? `CSS${originalRules.length > 0 ? ` (${originalRules.length})` : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
@@ -764,6 +783,78 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; onClose: () => void }> =
                       );
                     })
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CSS tab — original stylesheet rules */}
+          {tab === 'css' && (
+            <div className="space-y-3">
+              {/* CSS classes */}
+              {matchData.cssClasses.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-semibold mb-1.5" style={{ color: 'var(--penma-text-muted)' }}>Classes</label>
+                  <div className="flex flex-wrap gap-1">
+                    {matchData.cssClasses.map((cls, i) => (
+                      <span key={i} className="rounded-full px-2 py-0.5 text-[10px] font-mono" style={{ background: '#F0FDF4', color: '#22C55E' }}>
+                        .{cls}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Original CSS rules */}
+              <div>
+                <label className="block text-[10px] font-semibold mb-1.5" style={{ color: 'var(--penma-text-muted)' }}>
+                  Original CSS Rules {originalRules.length > 0 && <span className="font-normal">({originalRules.length} matched)</span>}
+                </label>
+                {originalRules.length === 0 ? (
+                  <div className="rounded-lg p-3 text-center text-[10px]" style={{ background: 'var(--penma-bg)', color: 'var(--penma-text-muted)' }}>
+                    {parentDoc?.cssRules ? 'No CSS rules matched this element' : 'CSS rules not available — re-import to capture'}
+                  </div>
+                ) : (
+                  <div className="rounded-lg overflow-auto max-h-60" style={{ background: 'var(--penma-bg)' }}>
+                    {originalRules.map((rule, i) => (
+                      <div key={i} className="border-b px-3 py-2" style={{ borderColor: 'var(--penma-border)' }}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-mono font-semibold" style={{ color: '#22C55E' }}>{rule.selector}</span>
+                          <span className="text-[9px] font-mono truncate max-w-[120px]" style={{ color: 'var(--penma-text-muted)' }}>
+                            {rule.source === 'inline' ? 'inline' : new URL(rule.source).pathname.split('/').pop()}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {Object.entries(rule.declarations).slice(0, 12).map(([prop, val]) => (
+                            <div key={prop} className="flex items-center gap-1 text-[9px] font-mono">
+                              <span style={{ color: '#3B82F6' }}>{prop}</span>
+                              <span style={{ color: 'var(--penma-text-muted)' }}>:</span>
+                              <span className="truncate" style={{ color: 'var(--penma-text-secondary)' }}>{val}</span>
+                            </div>
+                          ))}
+                          {Object.keys(rule.declarations).length > 12 && (
+                            <span className="text-[9px]" style={{ color: 'var(--penma-text-muted)' }}>
+                              +{Object.keys(rule.declarations).length - 12} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Computed styles summary */}
+              <div>
+                <label className="block text-[10px] font-semibold mb-1.5" style={{ color: 'var(--penma-text-muted)' }}>Computed Styles (key properties)</label>
+                <div className="rounded-lg p-2 space-y-0.5 max-h-32 overflow-auto" style={{ background: 'var(--penma-bg)' }}>
+                  {Object.entries(matchData.cssMatch).map(([prop, val]) => (
+                    <div key={prop} className="flex items-center gap-1 text-[9px] font-mono">
+                      <span style={{ color: '#8B5CF6' }}>{prop}</span>
+                      <span style={{ color: 'var(--penma-text-muted)' }}>:</span>
+                      <span className="truncate" style={{ color: 'var(--penma-text-secondary)' }}>{val}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

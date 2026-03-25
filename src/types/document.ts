@@ -5,9 +5,21 @@ export interface PenmaDocument {
   viewport: { width: number; height: number };
   rootNode: PenmaNode;
   assets: Record<string, AssetReference>;
+  /** Original CSS rules extracted from the page's stylesheets */
+  cssRules?: CssRuleEntry[];
   /** Position of this frame on the canvas (top-left corner in document space) */
   canvasX: number;
   canvasY: number;
+}
+
+/** A CSS rule extracted from a stylesheet during import */
+export interface CssRuleEntry {
+  /** CSS selector e.g. ".btn-primary", "nav > ul li" */
+  selector: string;
+  /** CSS declarations as key-value pairs */
+  declarations: Record<string, string>;
+  /** Source stylesheet URL (if from <link>) or "inline" */
+  source: string;
 }
 
 export interface PenmaNode {
@@ -35,6 +47,10 @@ export interface PenmaNode {
   sourceNodeId?: string;
   /** On instance root: IDs of descendant nodes edited by user — these skip master sync */
   instanceOverrides?: string[];
+  /** Original CSS class names from the source HTML */
+  cssClasses?: string[];
+  /** Indices into PenmaDocument.cssRules that matched this element during import */
+  matchedCssRules?: number[];
 }
 
 // ── Auto Layout (Figma-style) ──────────────────────────────

@@ -45,9 +45,16 @@ export interface ExtractedFontFace {
   format: string;
 }
 
+export interface ExtractedCssRule {
+  selector: string;
+  declarations: Record<string, string>;
+  source: string;
+}
+
 export interface ScrapeResult {
   tree: SerializedNode;
   fonts: ExtractedFontFace[];
+  cssRules: ExtractedCssRule[];
 }
 
 export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
@@ -107,6 +114,8 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           styles: Record<string, string>;
           bounds: { x: number; y: number; width: number; height: number };
           name: string;
+          cssClasses?: string[];
+          matchedCssRules?: number[];
         }
 
         function serializeNode(element: Element): SNode | null {
@@ -137,10 +146,18 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           // Extract attributes
           const attrs: Record<string, string> = {};
           for (const attr of Array.from(element.attributes)) {
-            if (['style', 'class', 'id', 'onclick', 'onload', 'onerror'].includes(attr.name)) continue;
+            if (['style', 'onclick', 'onload', 'onerror'].includes(attr.name)) continue;
             let val = attr.value;
             if (['src', 'href', 'poster', 'data-src'].includes(attr.name) && val) val = resolveUrl(val);
             attrs[attr.name] = val;
+          }
+
+          // Extract CSS classes
+          const cssClasses: string[] = [];
+          if (element.className && typeof element.className === 'string') {
+            for (const c of element.className.split(/\s+/)) {
+              if (c) cssClasses.push(c);
+            }
           }
 
           // Opaque elements: capture as raw HTML
@@ -213,6 +230,7 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
             tagName, attributes: attrs, children, textContent, rawHtml, styles,
             bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
             name,
+            cssClasses: cssClasses.length > 0 ? cssClasses : undefined,
           };
         }
 
@@ -282,7 +300,98 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
 
     progress(80, `Found ${extractedFonts.length} font faces`);
 
-    return { tree: serializedTree as SerializedNode, fonts: extractedFonts };
+    // ── Extract CSS rules from all stylesheets ──────────────────
+    progress(81, 'Extracting CSS rules...');
+    const extractedCssRules = await page.evaluate(() => {
+      const rules: Array<{ selector: string; declarations: Record<string, string>; source: string }> = [];
+      try {
+        for (const sheet of Array.from(document.styleSheets)) {
+          let cssRules: CSSRuleList;
+          try { cssRules = sheet.cssRules; } catch { continue; }
+          const source = sheet.href || 'inline';
+          for (const rule of Array.from(cssRules)) {
+            if (rule instanceof CSSStyleRule) {
+              const decls: Record<string, string> = {};
+              for (let i = 0; i < rule.style.length; i++) {
+                const prop = rule.style[i];
+                decls[prop] = rule.style.getPropertyValue(prop);
+              }
+              if (Object.keys(decls).length > 0) {
+                rules.push({ selector: rule.selectorText, declarations: decls, source });
+              }
+            }
+          }
+          // Limit to prevent memory issues on large sites
+          if (rules.length >= 5000) break;
+        }
+      } catch {}
+      return rules;
+    });
+
+    progress(82, `Found ${extractedCssRules.length} CSS rules`);
+
+    // ── Match CSS rules to nodes in the serialized tree ──────────
+    // We do this in the browser so we can use element.matches()
+    if (extractedCssRules.length > 0 && serializedTree) {
+      const selectors = extractedCssRules.map((r) => r.selector);
+      await page.evaluate(
+        (evalSelectors: string[]) => {
+          function assignMatchedRules(element: Element) {
+            const matched: number[] = [];
+            for (let i = 0; i < evalSelectors.length; i++) {
+              try {
+                if (element.matches(evalSelectors[i])) {
+                  matched.push(i);
+                }
+              } catch { /* invalid selector */ }
+            }
+            // Store on the element as a data attribute for the serializer to read
+            if (matched.length > 0) {
+              element.setAttribute('data-penma-matched-rules', matched.join(','));
+            }
+            for (const child of Array.from(element.children)) {
+              assignMatchedRules(child);
+            }
+          }
+          if (document.body) assignMatchedRules(document.body);
+        },
+        selectors,
+      );
+
+      // Now walk the serialized tree and read matched rules from the DOM
+      const matchedRulesMap = await page.evaluate(() => {
+        const map: Record<string, number[]> = {};
+        const els = document.querySelectorAll('[data-penma-matched-rules]');
+        for (const el of Array.from(els)) {
+          // Build a simple path as key
+          const tag = el.tagName.toLowerCase();
+          const id = el.id ? `#${el.id}` : '';
+          const cls = el.className && typeof el.className === 'string' ? `.${el.className.split(' ')[0]}` : '';
+          const rect = el.getBoundingClientRect();
+          const key = `${tag}${id}${cls}|${Math.round(rect.x)},${Math.round(rect.y)}`;
+          const indices = el.getAttribute('data-penma-matched-rules')!.split(',').map(Number);
+          map[key] = indices;
+        }
+        return map;
+      });
+
+      // Walk the serialized tree and assign matchedCssRules
+      function assignToTree(node: SerializedNode) {
+        const id = node.attributes?.id ? `#${node.attributes.id}` : '';
+        const cls = node.name?.startsWith('.') ? node.name : '';
+        const key = `${node.tagName}${id}${cls}|${Math.round(node.bounds.x)},${Math.round(node.bounds.y)}`;
+        const matched = matchedRulesMap[key];
+        if (matched && matched.length > 0) {
+          node.matchedCssRules = matched;
+        }
+        for (const child of node.children) {
+          assignToTree(child);
+        }
+      }
+      assignToTree(serializedTree as SerializedNode);
+    }
+
+    return { tree: serializedTree as SerializedNode, fonts: extractedFonts, cssRules: extractedCssRules };
   } finally {
     await browser.close();
   }

@@ -15,6 +15,10 @@ export interface SerializedNode {
   styles: Record<string, string>;
   bounds: { x: number; y: number; width: number; height: number };
   name: string;
+  /** Original CSS class names from the element */
+  cssClasses?: string[];
+  /** Indices into the extracted cssRules array that matched this element */
+  matchedCssRules?: number[];
 }
 
 /** Parse any CSS color value into hex + opacity. Handles:
@@ -212,6 +216,8 @@ function assignIds(
     autoLayout,
     sizing,
     fills: parseBgToFills(node.styles),
+    cssClasses: node.cssClasses,
+    matchedCssRules: node.matchedCssRules,
   };
 }
 
@@ -221,6 +227,7 @@ export function buildPenmaDocument(
   serializedTree: SerializedNode,
   sourceUrl: string,
   viewport: { width: number; height: number },
+  cssRules?: Array<{ selector: string; declarations: Record<string, string>; source: string }>,
 ): PenmaDocument {
   const rootNode = assignIds(serializedTree);
 
@@ -231,6 +238,7 @@ export function buildPenmaDocument(
     viewport,
     rootNode,
     assets: {},
+    cssRules: cssRules && cssRules.length > 0 ? cssRules : undefined,
     canvasX: 0,
     canvasY: 0,
   };

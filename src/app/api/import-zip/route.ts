@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
             const filePath = join(tempDir, entry.path);
             const fileUrl = new URL(`file://${filePath}`);
 
-            const { tree: serializedTree, fonts: extractedFonts } = await scrapePage({
+            const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
               url: fileUrl,
               viewportWidth,
               viewportHeight,
@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
               serializedTree,
               `zip://${entry.path}`,
               { width: viewportWidth, height: viewportHeight },
+              cssRules,
             );
 
             // Handle fonts
