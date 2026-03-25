@@ -449,22 +449,41 @@ const ImportDropdown: React.FC<{
   onImportUrl: () => void;
   onImportZip: () => void;
 }> = ({ onImportUrl, onImportZip }) => {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
+  const toggle = () => {
+    const el = popoverRef.current;
+    if (!el) return;
+    if (open) { el.hidePopover(); setOpen(false); }
+    else { el.showPopover(); setOpen(true); }
+  };
+
+  // Sync state when popover is dismissed (e.g. click outside, Escape)
   useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const el = popoverRef.current;
+    if (!el) return;
+    const onToggle = (e: Event) => {
+      setOpen((e as ToggleEvent).newState === 'open');
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    el.addEventListener('toggle', onToggle);
+    return () => el.removeEventListener('toggle', onToggle);
+  }, []);
+
+  // Position the popover below the button
+  useEffect(() => {
+    if (!open || !btnRef.current || !popoverRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    popoverRef.current.style.top = `${rect.bottom + 6}px`;
+    popoverRef.current.style.left = `${rect.right - popoverRef.current.offsetWidth}px`;
   }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        ref={btnRef}
+        onClick={toggle}
         className="flex h-8 items-center gap-1.5 rounded-lg pl-3.5 pr-2.5 text-xs font-medium text-white cursor-pointer"
         style={{
           background: 'var(--penma-primary)',
@@ -479,45 +498,46 @@ const ImportDropdown: React.FC<{
         <ChevronDown size={12} style={{ opacity: 0.7, marginLeft: 2, transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
 
-      {open && (
-        <div
-          className="absolute right-0 top-full mt-1.5 rounded-lg shadow-lg border py-1"
-          style={{
-            background: 'var(--penma-surface)',
-            borderColor: 'var(--penma-border)',
-            zIndex: 'var(--z-modal-overlay)',
-            minWidth: 190,
-          }}
+      {/* Popover renders in top layer — above all z-index stacking contexts */}
+      <div
+        ref={popoverRef}
+        popover="auto"
+        className="rounded-lg shadow-lg border py-1 m-0"
+        style={{
+          background: 'var(--penma-surface)',
+          borderColor: 'var(--penma-border)',
+          minWidth: 190,
+          position: 'fixed',
+        }}
+      >
+        <button
+          className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
+          style={{ transition: 'var(--transition-fast)' }}
+          onClick={() => { onImportUrl(); popoverRef.current?.hidePopover(); }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          <button
-            className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
-            style={{ transition: 'var(--transition-fast)' }}
-            onClick={() => { onImportUrl(); setOpen(false); }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Globe size={15} style={{ color: 'var(--penma-primary)' }} />
-            <div>
-              <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import URL</span>
-              <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Capture a live website</span>
-            </div>
-          </button>
-          <button
-            className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
-            style={{ transition: 'var(--transition-fast)' }}
-            onClick={() => { onImportZip(); setOpen(false); }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Archive size={15} style={{ color: '#8B5CF6' }} />
-            <div>
-              <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import ZIP</span>
-              <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Upload HTML files from a ZIP</span>
-            </div>
-          </button>
-        </div>
-      )}
-    </div>
+          <Globe size={15} style={{ color: 'var(--penma-primary)' }} />
+          <div>
+            <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import URL</span>
+            <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Capture a live website</span>
+          </div>
+        </button>
+        <button
+          className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
+          style={{ transition: 'var(--transition-fast)' }}
+          onClick={() => { onImportZip(); popoverRef.current?.hidePopover(); }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <Archive size={15} style={{ color: '#8B5CF6' }} />
+          <div>
+            <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import ZIP</span>
+            <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Upload HTML files from a ZIP</span>
+          </div>
+        </button>
+      </div>
+    </>
   );
 };
 
