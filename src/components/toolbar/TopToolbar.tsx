@@ -7,7 +7,9 @@ import {
   Undo2,
   Redo2,
   Import,
+  Globe,
   Archive,
+  ChevronDown,
   PanelLeft,
   PanelRight,
   Palette,
@@ -406,34 +408,10 @@ export const TopToolbar: React.FC = () => {
           <Plus size={14} />
           New Frame
         </button>
-        <button
-          onClick={() => setShowImportZipDialog(true)}
-          className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium cursor-pointer"
-          style={{
-            border: '1px solid var(--penma-border)',
-            color: 'var(--penma-text-secondary)',
-            fontFamily: 'var(--font-body)',
-            transition: 'var(--transition-base)',
-          }}
-          title="Import HTML from ZIP"
-        >
-          <Archive size={14} />
-          Import ZIP
-        </button>
-        <button
-          onClick={() => setShowImportDialog(true)}
-          className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium text-white cursor-pointer"
-          style={{
-            background: 'var(--penma-primary)',
-            fontFamily: 'var(--font-body)',
-            transition: 'var(--transition-base)',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-primary-hover)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--penma-primary)')}
-        >
-          <Import size={14} />
-          Import URL
-        </button>
+        <ImportDropdown
+          onImportUrl={() => setShowImportDialog(true)}
+          onImportZip={() => setShowImportZipDialog(true)}
+        />
       </div>
     </div>
   );
@@ -464,3 +442,82 @@ const ZoomMenuItem: React.FC<{ label: string; shortcut?: string; onClick: () => 
     )}
   </button>
 );
+
+// ── Import dropdown ──────────────────────────────────────────
+
+const ImportDropdown: React.FC<{
+  onImportUrl: () => void;
+  onImportZip: () => void;
+}> = ({ onImportUrl, onImportZip }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 items-center gap-1.5 rounded-lg pl-3.5 pr-2.5 text-xs font-medium text-white cursor-pointer"
+        style={{
+          background: 'var(--penma-primary)',
+          fontFamily: 'var(--font-body)',
+          transition: 'var(--transition-base)',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-primary-hover)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--penma-primary)')}
+      >
+        <Import size={14} />
+        Import
+        <ChevronDown size={12} style={{ opacity: 0.7, marginLeft: 2, transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none' }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1.5 rounded-lg shadow-lg border py-1"
+          style={{
+            background: 'var(--penma-surface)',
+            borderColor: 'var(--penma-border)',
+            zIndex: 'var(--z-modal-overlay)',
+            minWidth: 190,
+          }}
+        >
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
+            style={{ transition: 'var(--transition-fast)' }}
+            onClick={() => { onImportUrl(); setOpen(false); }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Globe size={15} style={{ color: 'var(--penma-primary)' }} />
+            <div>
+              <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import URL</span>
+              <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Capture a live website</span>
+            </div>
+          </button>
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer text-left"
+            style={{ transition: 'var(--transition-fast)' }}
+            onClick={() => { onImportZip(); setOpen(false); }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--penma-hover-bg)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Archive size={15} style={{ color: '#8B5CF6' }} />
+            <div>
+              <span className="text-xs font-medium block" style={{ color: 'var(--penma-text)' }}>Import ZIP</span>
+              <span className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>Upload HTML files from a ZIP</span>
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+

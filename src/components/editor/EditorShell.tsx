@@ -285,3 +285,4 @@ const RightPanelTabs: React.FC = () => {
     </div>
   );
 };
+

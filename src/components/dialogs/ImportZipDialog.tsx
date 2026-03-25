@@ -5,6 +5,7 @@ import { X, Archive, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone, Ch
 import { useEditorStore } from '@/store/editor-store';
 import type { PenmaDocument } from '@/types/document';
 import { autoDetectComponents } from '@/lib/design-system/component-detector';
+import { applyMappingRules, type MappingRuleData } from '@/lib/import/apply-mapping-rules';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },
@@ -31,6 +32,7 @@ export const ImportZipDialog: React.FC = () => {
   const [customHeight, setCustomHeight] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [autoComponents, setAutoComponents] = useState(true);
+  const [applyRules, setApplyRules] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +133,21 @@ export const ImportZipDialog: React.FC = () => {
               if (data.success && docChunks.length > 0) {
                 const fullJson = docChunks.join('');
                 const docs: PenmaDocument[] = JSON.parse(fullJson);
+
+                // Apply mapping rules from admin panel
+                if (applyRules) {
+                  try {
+                    const rulesRes = await fetch('/api/admin/mapping-rules/enabled');
+                    if (rulesRes.ok) {
+                      const enabledRules: MappingRuleData[] = await rulesRes.json();
+                      if (enabledRules.length > 0) {
+                        for (const doc of docs) {
+                          if (doc.rootNode) applyMappingRules(doc.rootNode, enabledRules);
+                        }
+                      }
+                    }
+                  } catch { /* rules are optional */ }
+                }
 
                 // Auto-detect components in each document
                 if (autoComponents) {
@@ -353,6 +370,22 @@ export const ImportZipDialog: React.FC = () => {
                 </span>
                 <p className="text-[10px] text-neutral-400 mt-0.5">
                   Identifies buttons, cards, nav items across all imported pages
+                </p>
+              </div>
+            </label>
+
+            {/* Apply mapping rules checkbox */}
+            <label className="mt-3 flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={applyRules}
+                onChange={(e) => setApplyRules(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-300 text-violet-500 focus:ring-violet-200 cursor-pointer accent-violet-500"
+              />
+              <div>
+                <span className="text-xs font-medium text-neutral-700">Apply mapping rules</span>
+                <p className="text-[10px] text-neutral-400 mt-0.5">
+                  Use <a href="/admin/mapping-rules" target="_blank" className="underline hover:text-violet-500">admin rules</a> to transform HTML→Penma→Figma
                 </p>
               </div>
             </label>

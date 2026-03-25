@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, FileText, Pencil, Link, Link2Off, Check } from 'lucide-react';
+import { Plus, Trash2, FileText, Pencil, Link, Link2Off, Check, Settings } from 'lucide-react';
 
 interface ProjectSummary {
   id: string;
@@ -158,6 +158,20 @@ export const ProjectList: React.FC = () => {
           </span>
         </div>
 
+        <div className="flex items-center gap-2">
+        <a
+          href="/admin/mapping-rules"
+          className="flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium cursor-pointer"
+          style={{
+            border: '1px solid var(--penma-border)',
+            color: 'var(--penma-text-secondary)',
+            fontFamily: 'var(--font-body)',
+            transition: 'var(--transition-base)',
+          }}
+        >
+          <Settings size={16} />
+          Mapping Rules
+        </a>
         <button
           onClick={handleCreate}
           disabled={creating}
@@ -173,6 +187,7 @@ export const ProjectList: React.FC = () => {
           <Plus size={16} />
           {creating ? 'Creating...' : 'New Project'}
         </button>
+        </div>
       </header>
 
       {/* Content */}

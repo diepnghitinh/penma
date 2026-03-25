@@ -8,6 +8,7 @@ import type { FetchUrlResponse } from '@/types/api';
 import type { PenmaDocument, PenmaNode } from '@/types/document';
 import { autoDetectComponents } from '@/lib/design-system/component-detector';
 import { flattenTree } from '@/lib/utils/tree-utils';
+import { applyMappingRules, type MappingRuleData } from '@/lib/import/apply-mapping-rules';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },
@@ -41,6 +42,7 @@ export const ImportUrlDialog: React.FC = () => {
   const [customHeight, setCustomHeight] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [autoComponents, setAutoComponents] = useState(true);
+  const [applyRules, setApplyRules] = useState(true);
 
   const getViewport = useCallback(() => {
     if (useCustom) {
@@ -129,6 +131,19 @@ export const ImportUrlDialog: React.FC = () => {
                 const fullJson = docChunks.join('');
                 const doc = JSON.parse(fullJson);
 
+                // Apply mapping rules from admin panel
+                if (applyRules && doc.rootNode) {
+                  try {
+                    const rulesRes = await fetch('/api/admin/mapping-rules/enabled');
+                    if (rulesRes.ok) {
+                      const enabledRules: MappingRuleData[] = await rulesRes.json();
+                      if (enabledRules.length > 0) {
+                        applyMappingRules(doc.rootNode, enabledRules);
+                      }
+                    }
+                  } catch { /* rules are optional */ }
+                }
+
                 // Auto-detect design system components (buttons, cards, nav items, etc.)
                 if (autoComponents && doc.rootNode) {
                   autoDetectComponents(doc.rootNode);
@@ -178,7 +193,7 @@ export const ImportUrlDialog: React.FC = () => {
       setIsLoading(false);
       setImporting(false);
     }
-  }, [url, setDocument, addDocuments, setImporting, setImportError, setShowImportDialog, getViewport, autoComponents]);
+  }, [url, setDocument, addDocuments, setImporting, setImportError, setShowImportDialog, getViewport, autoComponents, applyRules]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -336,6 +351,23 @@ export const ImportUrlDialog: React.FC = () => {
               <span className="text-xs font-medium text-neutral-700">Auto-detect design system components</span>
               <p className="text-[10px] text-neutral-400 mt-0.5">
                 Identifies buttons, cards, nav items and creates a component frame
+              </p>
+            </div>
+          </label>
+
+          {/* Apply mapping rules checkbox */}
+          <label className="mt-3 flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={applyRules}
+              onChange={(e) => setApplyRules(e.target.checked)}
+              disabled={isLoading}
+              className="h-4 w-4 rounded border-neutral-300 text-blue-500 focus:ring-blue-200 cursor-pointer accent-blue-500"
+            />
+            <div>
+              <span className="text-xs font-medium text-neutral-700">Apply mapping rules</span>
+              <p className="text-[10px] text-neutral-400 mt-0.5">
+                Use <a href="/admin/mapping-rules" target="_blank" className="underline hover:text-blue-500">admin rules</a> to transform HTML→Penma→Figma
               </p>
             </div>
           </label>

@@ -353,8 +353,12 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
   const isComponent = !!node.componentId;
   const isInstance = !!node.componentRef;
 
+  // Check for mapping rule figma overrides stored as __figma_* style overrides
+  const figmaNodeType = node.styles.overrides['__figma_nodeType'];
+
   let type: string;
-  if (isComponent) type = 'COMPONENT';
+  if (figmaNodeType) type = figmaNodeType;
+  else if (isComponent) type = 'COMPONENT';
   else if (isInstance) type = 'INSTANCE';
   else if (isText) type = 'TEXT';
   else if (isSvg) type = 'VECTOR';
@@ -771,6 +775,18 @@ function convertNode(node: PenmaNode, offsetX: number, offsetY: number): FigmaNo
     // Remove characters from the container — it's a frame, not text
     delete result.characters;
     delete result.style;
+  }
+
+  // Apply mapping rule Figma overrides stored as __figma_* style overrides
+  const figmaLayoutMode = node.styles.overrides['__figma_layoutMode'];
+  if (figmaLayoutMode) {
+    result.layoutMode = figmaLayoutMode;
+  }
+  for (const [key, value] of Object.entries(node.styles.overrides)) {
+    if (key.startsWith('__figma_') && key !== '__figma_nodeType' && key !== '__figma_layoutMode') {
+      const prop = key.slice(8); // remove '__figma_' prefix
+      (result as unknown as Record<string, unknown>)[prop] = value;
+    }
   }
 
   return result;
