@@ -573,13 +573,44 @@ function extractNodeMatchData(node: PenmaNode) {
 const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument | null; onClose: () => void }> = ({ node, document: parentDoc, onClose }) => {
   const matchData = React.useMemo(() => extractNodeMatchData(node), [node]);
 
-  // Get original CSS rules that matched this node
+  // Get original CSS rules — from document inline or fetch from DB
+  const [dbCssRules, setDbCssRules] = useState<CssRuleEntry[]>([]);
+  const [cssLoading, setCssLoading] = useState(false);
+
+  // Load from DB if document doesn't have inline cssRules
+  useEffect(() => {
+    if (parentDoc?.cssRules && parentDoc.cssRules.length > 0) return;
+    if (!parentDoc?.sourceUrl) return;
+    setCssLoading(true);
+    fetch(`/api/admin/imported-css?sourceUrl=${encodeURIComponent(parentDoc.sourceUrl)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.rules && data.rules.length > 0) {
+          setDbCssRules(data.rules);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCssLoading(false));
+  }, [parentDoc]);
+
+  const allCssRules = parentDoc?.cssRules && parentDoc.cssRules.length > 0
+    ? parentDoc.cssRules
+    : dbCssRules;
+
   const originalRules = React.useMemo(() => {
-    if (!parentDoc?.cssRules || !node.matchedCssRules) return [];
+    if (!allCssRules || allCssRules.length === 0 || !node.matchedCssRules) {
+      // Fallback: match by CSS classes if we have rules but no matchedCssRules indices
+      if (allCssRules.length > 0 && node.cssClasses && node.cssClasses.length > 0) {
+        return allCssRules.filter((rule) => {
+          return node.cssClasses!.some((cls) => rule.selector.includes(`.${cls}`));
+        }).slice(0, 50);
+      }
+      return [];
+    }
     return node.matchedCssRules
-      .filter((i) => i < parentDoc.cssRules!.length)
-      .map((i) => parentDoc.cssRules![i]);
-  }, [parentDoc, node.matchedCssRules]);
+      .filter((i) => i < allCssRules.length)
+      .map((i) => allCssRules[i]);
+  }, [allCssRules, node.matchedCssRules, node.cssClasses]);
 
   const [name, setName] = useState(node.name || node.tagName);
   const [description, setDescription] = useState('');
@@ -728,7 +759,7 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument 
                 {t === 'css' && <Code2 size={11} />}
                 {t === 'transform' && <ArrowRightLeft size={11} />}
                 {t === 'figma' && <Sparkles size={11} />}
-                {t === 'css' ? `CSS${originalRules.length > 0 ? ` (${originalRules.length})` : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
+                {t === 'css' ? `CSS${originalRules.length > 0 ? ` (${originalRules.length})` : cssLoading ? ' ...' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
@@ -810,9 +841,13 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument 
                 <label className="block text-[10px] font-semibold mb-1.5" style={{ color: 'var(--penma-text-muted)' }}>
                   Original CSS Rules {originalRules.length > 0 && <span className="font-normal">({originalRules.length} matched)</span>}
                 </label>
-                {originalRules.length === 0 ? (
+                {cssLoading ? (
                   <div className="rounded-lg p-3 text-center text-[10px]" style={{ background: 'var(--penma-bg)', color: 'var(--penma-text-muted)' }}>
-                    {parentDoc?.cssRules ? 'No CSS rules matched this element' : 'CSS rules not available — re-import to capture'}
+                    Loading CSS from database...
+                  </div>
+                ) : originalRules.length === 0 ? (
+                  <div className="rounded-lg p-3 text-center text-[10px]" style={{ background: 'var(--penma-bg)', color: 'var(--penma-text-muted)' }}>
+                    {allCssRules.length > 0 ? 'No CSS rules matched this element' : 'CSS rules not available — re-import to capture'}
                   </div>
                 ) : (
                   <div className="rounded-lg overflow-auto max-h-60" style={{ background: 'var(--penma-bg)' }}>
@@ -821,7 +856,7 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument 
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] font-mono font-semibold" style={{ color: '#22C55E' }}>{rule.selector}</span>
                           <span className="text-[9px] font-mono truncate max-w-[120px]" style={{ color: 'var(--penma-text-muted)' }}>
-                            {rule.source === 'inline' ? 'inline' : new URL(rule.source).pathname.split('/').pop()}
+                            {rule.source === 'inline' ? 'inline' : (() => { try { return new URL(rule.source).pathname.split('/').pop(); } catch { return rule.source; } })()}
                           </span>
                         </div>
                         <div className="space-y-0.5">
@@ -843,6 +878,14 @@ const DevMappingRuleDialog: React.FC<{ node: PenmaNode; document: PenmaDocument 
                   </div>
                 )}
               </div>
+
+              {/* CSS data source indicator */}
+              {originalRules.length > 0 && (
+                <p className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+                  Source: {parentDoc?.cssRules && parentDoc.cssRules.length > 0 ? 'inline (document)' : dbCssRules.length > 0 ? 'database' : 'matched indices'}
+                  {dbCssRules.length > 0 && !parentDoc?.cssRules && ' \u2014 matched by class name'}
+                </p>
+              )}
 
               {/* Computed styles summary */}
               <div>

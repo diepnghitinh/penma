@@ -14,10 +14,12 @@ export interface LocalSave {
 
 export function saveProjectToLocal(projectId: string, data: LocalSave): void {
   try {
-    localStorage.setItem(
-      `${STORAGE_PREFIX}${projectId}`,
-      JSON.stringify(data)
-    );
+    // Strip large CSS data to avoid localStorage quota issues
+    const json = JSON.stringify(data, (key, value) => {
+      if (key === 'cssRules' || key === 'matchedCssRules' || key === 'cssClasses') return undefined;
+      return value;
+    });
+    localStorage.setItem(`${STORAGE_PREFIX}${projectId}`, json);
   } catch {
     // Quota exceeded or localStorage unavailable — silently skip
   }

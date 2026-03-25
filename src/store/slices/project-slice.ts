@@ -123,7 +123,7 @@ export const createProjectSlice: StateCreator<
         return {
           _id: pageId,
           name: p.name || 'Page',
-          documents: JSON.parse(JSON.stringify(p.documents ?? [])),
+          documents: stripCssForSave(p.documents ?? []),
           activeDocumentId: p.activeDocumentId ?? null,
           selectedIds: p.selectedIds ?? [],
           camera: p.camera
@@ -132,10 +132,22 @@ export const createProjectSlice: StateCreator<
         };
       });
 
+      // Compress payload to handle large imported sites
+      const jsonBody = JSON.stringify({ pages: serializedPages });
+      let body: BodyInit = jsonBody;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+      if (jsonBody.length > 1_000_000 && typeof CompressionStream !== 'undefined') {
+        const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStream('gzip'));
+        body = await new Response(stream).blob();
+        headers['Content-Type'] = 'application/json';
+        headers['Content-Encoding'] = 'gzip';
+      }
+
       const res = await fetch(`/api/projects/${state.projectId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages: serializedPages }),
+        headers,
+        body,
       });
 
       if (!res.ok) {
@@ -170,3 +182,15 @@ export const createProjectSlice: StateCreator<
     set({ isDirty: true });
   },
 });
+
+/** Strip large import-time data from documents before saving to DB.
+ *  CSS rules are stored separately in the ImportedCss collection. */
+function stripCssForSave(documents: unknown[]): unknown[] {
+  const json = JSON.stringify(documents, (key, value) => {
+    if (key === 'cssRules') return undefined;
+    if (key === 'matchedCssRules') return undefined;
+    if (key === 'cssClasses') return undefined;
+    return value;
+  });
+  return JSON.parse(json);
+}

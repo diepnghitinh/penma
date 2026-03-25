@@ -34,4 +34,18 @@ export const editorConfig: EditorConfig = {
 
 export const sidebarConfig = {
   showNativeCss: false,
-}
+};
+
+/**
+ * Import blacklist — file/folder names to skip when importing from ZIP.
+ * Paths containing any of these names (case-insensitive) are excluded.
+ */
+export const importBlacklist: string[] = [
+  '__MACOSX',
+  '.DS_Store',
+  'Thumbs.db',
+  '.git',
+  'node_modules',
+  '.svn',
+  '.hg',
+];

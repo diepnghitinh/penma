@@ -7,7 +7,9 @@ import { randomUUID } from 'crypto';
 import { scrapePage } from '@/lib/import/scrape-page';
 import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
 import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
+import { storeImportedCss } from '@/lib/import/store-css';
 import type { AssetReference, PenmaDocument } from '@/types/document';
+import { importBlacklist } from '@/configs/editor';
 
 const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100MB
 const HTML_EXTENSIONS = ['.html', '.htm'];
@@ -15,6 +17,13 @@ const HTML_EXTENSIONS = ['.html', '.htm'];
 function isHtmlFile(filename: string): boolean {
   const lower = filename.toLowerCase();
   return HTML_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isBlacklisted(path: string): boolean {
+  const parts = path.split('/');
+  return parts.some((part) =>
+    importBlacklist.some((b) => part.toLowerCase() === b.toLowerCase()),
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -54,10 +63,10 @@ export async function POST(request: NextRequest) {
         const arrayBuffer = await file.arrayBuffer();
         const zip = await JSZip.loadAsync(arrayBuffer);
 
-        // Find all HTML files in the ZIP
+        // Find all HTML files in the ZIP, skipping blacklisted paths
         const htmlEntries: { path: string; file: JSZip.JSZipObject }[] = [];
         zip.forEach((relativePath, zipEntry) => {
-          if (!zipEntry.dir && isHtmlFile(relativePath)) {
+          if (!zipEntry.dir && isHtmlFile(relativePath) && !isBlacklisted(relativePath)) {
             htmlEntries.push({ path: relativePath, file: zipEntry });
           }
         });
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
 
         send('progress', { percent: 15, step: 'Extracting files...' });
 
-        const allFiles = Object.entries(zip.files).filter(([, entry]) => !entry.dir);
+        const allFiles = Object.entries(zip.files).filter(([path, entry]) => !entry.dir && !isBlacklisted(path));
         for (const [relativePath, entry] of allFiles) {
           const filePath = join(tempDir, relativePath);
           const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
@@ -125,6 +134,9 @@ export async function POST(request: NextRequest) {
               { width: viewportWidth, height: viewportHeight },
               cssRules,
             );
+
+            // Store CSS rules in MongoDB
+            storeImportedCss(`zip://${entry.path}`, cssRules).catch(() => {});
 
             // Handle fonts
             if (extractedFonts.length > 0) {

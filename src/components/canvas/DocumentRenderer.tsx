@@ -417,7 +417,15 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     tr: 'div', td: 'div', th: 'div', caption: 'div',
     colgroup: 'div', col: 'div',
   };
-  const tagName = REMAP_TAGS[node.tagName] ?? node.tagName;
+  // Phrasing-only elements that cannot contain block-level children (div, section, etc.)
+  const PHRASING_ONLY = new Set(['p', 'span', 'a', 'em', 'strong', 'small', 'b', 'i', 'u', 'label', 'abbr', 'cite', 'code', 'mark', 'sub', 'sup', 'time']);
+  const hasBlockChildren = node.children.some((c) =>
+    !PHRASING_ONLY.has(c.tagName) && !VOID_ELEMENTS.has(c.tagName) && c.tagName !== 'span',
+  );
+  let tagName = REMAP_TAGS[node.tagName] ?? node.tagName;
+  if (PHRASING_ONLY.has(tagName) && hasBlockChildren) {
+    tagName = 'div';
+  }
   const Tag = tagName as keyof React.JSX.IntrinsicElements;
   const isVoid = VOID_ELEMENTS.has(node.tagName);
 

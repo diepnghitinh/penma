@@ -3,6 +3,10 @@ import crypto from 'crypto';
 import { connectDB } from '@/lib/db/connection';
 import { Project } from '@/lib/db/models/project';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+
 // GET /api/projects/[id] — Load full project
 export async function GET(
   _request: Request,
@@ -44,7 +48,16 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    // Handle gzip-compressed payloads from large imports
+    let body: { pages: unknown[] };
+    if (request.headers.get('content-encoding') === 'gzip') {
+      const ds = new DecompressionStream('gzip');
+      const decompressed = request.body!.pipeThrough(ds);
+      const text = await new Response(decompressed).text();
+      body = JSON.parse(text);
+    } else {
+      body = await request.json();
+    }
 
     const project = await Project.findByIdAndUpdate(
       id,

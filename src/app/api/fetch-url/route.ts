@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { scrapePage } from '@/lib/import/scrape-page';
 import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
 import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
+import { storeImportedCss } from '@/lib/import/store-css';
 import type { AssetReference } from '@/types/document';
 
 export async function POST(request: NextRequest) {
@@ -50,6 +51,9 @@ export async function POST(request: NextRequest) {
       { width: viewportWidth, height: viewportHeight },
       cssRules,
     );
+
+    // Store CSS rules in MongoDB
+    storeImportedCss(parsedUrl.toString(), cssRules).catch(() => {});
 
     // Download and store fonts in MongoDB
     const storedFonts = await downloadAndStoreFonts(extractedFonts, parsedUrl.toString());
@@ -105,6 +109,9 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
           { width: viewportWidth, height: viewportHeight },
           cssRules,
         );
+
+        // Store CSS rules in MongoDB
+        storeImportedCss(parsedUrl.toString(), cssRules).catch(() => {});
 
         // Download and store fonts in MongoDB
         if (extractedFonts.length > 0) {

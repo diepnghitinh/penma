@@ -12,7 +12,7 @@ import { LayoutPanel } from './LayoutPanel';
 import { TypographyPanel } from './TypographyPanel';
 import { ExportPanel } from './ExportPanel';
 import { DocumentSizePanel } from './DocumentSizePanel';
-import type { PenmaNode, PenmaFill } from '@/types/document';
+import type { PenmaNode, PenmaFill, PenmaDocument, CssRuleEntry } from '@/types/document';
 
 interface StyleSectionProps {
   title: string;
@@ -219,6 +219,9 @@ export const StylePanel: React.FC = () => {
             {selectedNode.textContent.slice(0, 50)}
           </p>
         )}
+
+        {/* Original CSS summary */}
+        <NodeCssInfo node={selectedNode} document={document} />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -269,6 +272,9 @@ export const StylePanel: React.FC = () => {
 
         {/* Stroke */}
         {!isInstance && <StrokePanel node={selectedNode} />}
+
+        {/* Original CSS */}
+        <OriginalCssPanel node={selectedNode} document={document} />
 
         {/* Export */}
         <div style={{ borderTop: '1px solid var(--penma-border)' }}>
@@ -534,6 +540,161 @@ const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
               </IconBtn>
               {/* Remove */}
               <IconBtn onClick={() => removeFill(fill.id)} title="Remove fill"><MinusIcon /></IconBtn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Node CSS info (inline in node info header) ─────────────
+
+const NodeCssInfo: React.FC<{ node: PenmaNode; document: PenmaDocument }> = ({ node, document: doc }) => {
+  const classes = node.cssClasses || [];
+  const ruleCount = node.matchedCssRules?.filter((i) => doc.cssRules && i < doc.cssRules.length).length || 0;
+
+  if (classes.length === 0 && ruleCount === 0) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+      {/* Tag pill */}
+      <span className="rounded px-1 py-px text-[9px] font-mono" style={{ background: 'var(--penma-hover-bg)', color: 'var(--penma-text-muted)' }}>
+        &lt;{node.tagName}&gt;
+      </span>
+      {/* Class pills */}
+      {classes.slice(0, 4).map((cls, i) => (
+        <span key={i} className="rounded px-1 py-px text-[9px] font-mono" style={{ background: '#EFF6FF', color: 'var(--penma-primary)' }}>
+          .{cls}
+        </span>
+      ))}
+      {classes.length > 4 && (
+        <span className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>+{classes.length - 4}</span>
+      )}
+      {/* Rule count */}
+      {ruleCount > 0 && (
+        <span className="rounded px-1 py-px text-[9px] font-mono" style={{ background: '#F0FDF4', color: '#22C55E' }}>
+          {ruleCount} CSS rule{ruleCount !== 1 ? 's' : ''}
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ── Original CSS panel ──────────────────────────────────────
+
+const OriginalCssPanel: React.FC<{ node: PenmaNode; document: PenmaDocument }> = ({ node, document: doc }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const matchedRules: CssRuleEntry[] = React.useMemo(() => {
+    if (!doc.cssRules || !node.matchedCssRules) return [];
+    return node.matchedCssRules
+      .filter((i) => i < doc.cssRules!.length)
+      .map((i) => doc.cssRules![i]);
+  }, [doc.cssRules, node.matchedCssRules]);
+
+  const classes = node.cssClasses || [];
+  const hasData = matchedRules.length > 0 || classes.length > 0;
+
+  if (!hasData) return null;
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
+      <div className="flex h-9 items-center justify-between px-4">
+        <button
+          className="flex items-center gap-1.5 cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <span style={mutedStyle}>{expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--penma-text)' }}>Original CSS</span>
+        </button>
+        {matchedRules.length > 0 && (
+          <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+            {matchedRules.length} rule{matchedRules.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-3">
+          {/* CSS classes */}
+          {classes.length > 0 && (
+            <div className="mb-2">
+              <span className="block text-[10px] font-medium mb-1" style={{ color: 'var(--penma-text-muted)' }}>Classes</span>
+              <div className="flex flex-wrap gap-1">
+                {classes.map((cls, i) => (
+                  <span
+                    key={i}
+                    className="rounded px-1.5 py-0.5 text-[10px] font-mono cursor-default"
+                    style={{ background: 'var(--penma-hover-bg)', color: 'var(--penma-primary)' }}
+                  >
+                    .{cls}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Matched CSS rules */}
+          {matchedRules.length > 0 && (
+            <div className="space-y-1.5">
+              {matchedRules.map((rule, i) => (
+                <CssRuleBlock key={i} rule={rule} />
+              ))}
+            </div>
+          )}
+
+          {matchedRules.length === 0 && classes.length > 0 && (
+            <p className="text-[10px] mt-1" style={{ color: 'var(--penma-text-muted)' }}>
+              CSS rules not captured — re-import to store stylesheet data
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CssRuleBlock: React.FC<{ rule: CssRuleEntry }> = ({ rule }) => {
+  const [open, setOpen] = useState(false);
+  const entries = Object.entries(rule.declarations);
+  const preview = entries.slice(0, 3);
+  const hasMore = entries.length > 3;
+
+  let sourceLabel = 'inline';
+  if (rule.source !== 'inline') {
+    try { sourceLabel = new URL(rule.source).pathname.split('/').pop() || rule.source; } catch { sourceLabel = rule.source; }
+  }
+
+  return (
+    <div className="rounded-md" style={{ background: 'var(--penma-hover-bg)' }}>
+      <button
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 cursor-pointer text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <span style={{ color: 'var(--penma-text-muted)' }}>{open ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+        <span className="text-[10px] font-mono font-medium flex-1 truncate" style={{ color: '#22C55E' }}>{rule.selector}</span>
+        <span className="text-[9px] font-mono shrink-0" style={{ color: 'var(--penma-text-muted)' }}>{sourceLabel}</span>
+      </button>
+
+      {!open && (
+        <div className="px-2 pb-1.5 flex flex-wrap gap-x-3">
+          {preview.map(([prop, val]) => (
+            <span key={prop} className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+              <span style={{ color: 'var(--penma-primary)' }}>{prop}</span>: {val.length > 20 ? val.slice(0, 20) + '...' : val}
+            </span>
+          ))}
+          {hasMore && <span className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>+{entries.length - 3}</span>}
+        </div>
+      )}
+
+      {open && (
+        <div className="px-2 pb-2 space-y-0.5">
+          {entries.map(([prop, val]) => (
+            <div key={prop} className="flex gap-1 text-[10px] font-mono leading-tight">
+              <span className="shrink-0" style={{ color: 'var(--penma-primary)' }}>{prop}</span>
+              <span style={{ color: 'var(--penma-text-muted)' }}>:</span>
+              <span className="break-all" style={{ color: 'var(--penma-text-secondary)' }}>{val}</span>
             </div>
           ))}
         </div>
