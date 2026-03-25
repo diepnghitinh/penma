@@ -185,8 +185,15 @@ export const Canvas: React.FC = () => {
         className="absolute origin-top-left"
         style={{ transform: getCanvasTransform(camera), willChange: 'transform' }}
       >
-        {/* Multiple document frames */}
-        {documents.map((doc) => {
+        {/* Canvas-level shapes (outside any frame) */}
+        {documents.filter((d) => d.sourceUrl === 'local://canvas').map((doc) => (
+          <div key={doc.id} className="absolute" style={{ left: 0, top: 0, position: 'relative' }}>
+            <DocumentRenderer node={doc.rootNode} />
+          </div>
+        ))}
+
+        {/* Document frames */}
+        {documents.filter((d) => d.sourceUrl !== 'local://canvas').map((doc) => {
           const isActive = doc.id === activeDocumentId;
           return (
             <div
@@ -283,7 +290,7 @@ export const Canvas: React.FC = () => {
       </div>
 
       {/* Empty state */}
-      {documents.length === 0 && (
+      {documents.filter((d) => d.sourceUrl !== 'local://canvas').length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
             <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" strokeWidth={1.2} viewBox="0 0 24 24" style={{ color: 'var(--penma-border-strong)' }}>

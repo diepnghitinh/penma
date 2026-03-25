@@ -93,23 +93,16 @@ export const ShapeCreator: React.FC<{
         cam
       );
 
-      // Convert from canvas space to document-frame-relative space
-      const activeDoc = store.documents.find((d) => d.id === store.activeDocumentId) ?? store.documents[0];
-      const frameOffsetX = activeDoc?.canvasX ?? 0;
-      const frameOffsetY = activeDoc?.canvasY ?? 0;
-
       let w = Math.abs(endDoc.x - startDoc.x);
       let h = Math.abs(endDoc.y - startDoc.y);
-      const x = Math.min(startDoc.x, endDoc.x) - frameOffsetX;
-      const y = Math.min(startDoc.y, endDoc.y) - frameOffsetY;
 
       // Minimum size — if click without drag, use default size
       if (w < 10) w = activeTool === 'line' || activeTool === 'arrow' ? 200 : 100;
       if (h < 10) h = activeTool === 'line' || activeTool === 'arrow' ? 2 : 100;
 
       const drawnInFrameId = targetFrameId.current;
-      let finalX = x;
-      let finalY = y;
+      let finalX: number;
+      let finalY: number;
 
       if (drawnInFrameId) {
         // Compute position relative to the frame element.
@@ -122,39 +115,24 @@ export const ShapeCreator: React.FC<{
           const sy = Math.min(startScreen.current.y, e.clientY);
           finalX = (sx - frameRect.left) / cam.zoom;
           finalY = (sy - frameRect.top) / cam.zoom;
+        } else {
+          finalX = Math.min(startDoc.x, endDoc.x);
+          finalY = Math.min(startDoc.y, endDoc.y);
         }
+      } else {
+        // Drawing outside any frame — position in canvas space
+        finalX = Math.min(startDoc.x, endDoc.x);
+        finalY = Math.min(startDoc.y, endDoc.y);
       }
 
       const node = createShapeNode(activeTool, finalX, finalY, w, h);
       if (node) {
-        // Auto-create a canvas document if none exists
-        if (store.documents.length === 0) {
-          store.setDocument({
-            id: uuid(),
-            sourceUrl: 'local://canvas',
-            importedAt: new Date().toISOString(),
-            viewport: { width: 1440, height: 900 },
-            rootNode: {
-              id: uuid(),
-              tagName: 'div',
-              attributes: {},
-              children: [],
-              styles: { computed: {}, overrides: {} },
-              bounds: { x: 0, y: 0, width: 1440, height: 900 },
-              visible: true,
-              locked: false,
-              name: 'Canvas',
-            },
-            assets: {},
-            canvasX: 0,
-            canvasY: 0,
-          });
-        }
         store.pushHistory(`Create ${activeTool}`);
         if (drawnInFrameId) {
           store.addNodeToParent(drawnInFrameId, node);
         } else {
-          store.addNodeToActiveDocument(node);
+          // Add to canvas document (created automatically if needed)
+          store.addCanvasNode(node);
         }
         store.select(node.id);
         store.setActiveTool('select');

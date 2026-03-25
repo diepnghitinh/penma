@@ -10,6 +10,7 @@ import { LayerPanel } from '@/components/panels/LayerPanel';
 import { StylePanel } from '@/components/panels/StylePanel';
 import { DesignSystemPanel } from '@/components/panels/DesignSystemPanel';
 import { ImportUrlDialog } from '@/components/dialogs/ImportUrlDialog';
+import { ImportZipDialog } from '@/components/dialogs/ImportZipDialog';
 import { ResizablePanel } from '@/components/ui/ResizablePanel';
 import { PageTabs } from '@/components/toolbar/PageTabs';
 import { CanvasContextMenu } from '@/components/canvas/ContextMenu';
@@ -248,6 +249,7 @@ export const EditorShell: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
 
       {/* Dialogs (only in edit mode) */}
       {!readOnly && <ImportUrlDialog />}
+      {!readOnly && <ImportZipDialog />}
       {!readOnly && <CanvasContextMenu />}
     </div>
   );

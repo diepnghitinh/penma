@@ -16,6 +16,7 @@ export interface UISlice {
   activeTool: Tool;
   openPanels: PanelId[];
   showImportDialog: boolean;
+  showImportZipDialog: boolean;
   showExportDialog: boolean;
   isPanning: boolean;
   editEnabled: boolean;
@@ -23,6 +24,7 @@ export interface UISlice {
   setActiveTool: (tool: Tool) => void;
   togglePanel: (panel: PanelId) => void;
   setShowImportDialog: (show: boolean) => void;
+  setShowImportZipDialog: (show: boolean) => void;
   setShowExportDialog: (show: boolean) => void;
   setIsPanning: (panning: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;
@@ -44,6 +46,7 @@ export const createUISlice: StateCreator<
   activeTool: 'select',
   openPanels: ['layers', 'styles'],
   showImportDialog: true,
+  showImportZipDialog: false,
   showExportDialog: false,
   isPanning: false,
   editEnabled: editorConfig.enabled,
@@ -63,6 +66,7 @@ export const createUISlice: StateCreator<
     })),
 
   setShowImportDialog: (show) => set({ showImportDialog: show }),
+  setShowImportZipDialog: (show) => set({ showImportZipDialog: show }),
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setIsPanning: (panning) => set({ isPanning: panning }),
 

@@ -56,6 +56,8 @@ export interface DocumentSlice {
   removeNodeAttribute: (nodeId: string, key: string) => void;
   /** Check if a node is a component instance (ref) */
   isComponentRef: (nodeId: string) => boolean;
+  /** Add a shape to the canvas document (creates it if needed) */
+  addCanvasNode: (node: PenmaNode) => void;
 }
 
 /** Check if a node is inside a master component (or is one) */
@@ -513,6 +515,45 @@ export const createDocumentSlice: StateCreator<
             if (parent) parent.children.push(node);
           });
         }),
+      };
+    }),
+
+  addCanvasNode: (node) =>
+    set((state) => {
+      let docs = state.documents;
+      let canvasDoc = docs.find((d) => d.sourceUrl === 'local://canvas');
+
+      if (!canvasDoc) {
+        canvasDoc = {
+          id: uuid(),
+          sourceUrl: 'local://canvas',
+          importedAt: new Date().toISOString(),
+          viewport: { width: 0, height: 0 },
+          rootNode: {
+            id: uuid(),
+            tagName: 'div',
+            attributes: {},
+            children: [],
+            styles: { computed: {}, overrides: {} },
+            bounds: { x: 0, y: 0, width: 0, height: 0 },
+            visible: true,
+            locked: false,
+            name: 'Canvas',
+          },
+          assets: {},
+          canvasX: 0,
+          canvasY: 0,
+        };
+        docs = [...docs, canvasDoc];
+      }
+
+      const canvasId = canvasDoc.id;
+      return {
+        documents: docs.map((d) =>
+          d.id === canvasId
+            ? produce(d, (draft) => { draft.rootNode.children.push(node); })
+            : d
+        ),
       };
     }),
 

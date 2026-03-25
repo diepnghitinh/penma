@@ -7,6 +7,7 @@ import {
   Undo2,
   Redo2,
   Import,
+  Archive,
   PanelLeft,
   PanelRight,
   Palette,
@@ -34,6 +35,7 @@ export const TopToolbar: React.FC = () => {
   const canUndo = useEditorStore((s) => s.canUndo);
   const canRedo = useEditorStore((s) => s.canRedo);
   const setShowImportDialog = useEditorStore((s) => s.setShowImportDialog);
+  const setShowImportZipDialog = useEditorStore((s) => s.setShowImportZipDialog);
   const documents = useEditorStore((s) => s.documents);
   const addDocument = useEditorStore((s) => s.addDocument);
   const pushHistory = useEditorStore((s) => s.pushHistory);
@@ -403,6 +405,20 @@ export const TopToolbar: React.FC = () => {
         >
           <Plus size={14} />
           New Frame
+        </button>
+        <button
+          onClick={() => setShowImportZipDialog(true)}
+          className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-medium cursor-pointer"
+          style={{
+            border: '1px solid var(--penma-border)',
+            color: 'var(--penma-text-secondary)',
+            fontFamily: 'var(--font-body)',
+            transition: 'var(--transition-base)',
+          }}
+          title="Import HTML from ZIP"
+        >
+          <Archive size={14} />
+          Import ZIP
         </button>
         <button
           onClick={() => setShowImportDialog(true)}

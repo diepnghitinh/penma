@@ -569,8 +569,9 @@ export const LayerPanel: React.FC = () => {
           const isActive = doc.id === activeDocumentId;
           const isDocExpanded = expanded.ids.has(doc.id);
           const isFrameSelected = selectedIds.includes(doc.rootNode.id);
-          let hostname = doc.sourceUrl;
-          try { hostname = new URL(doc.sourceUrl).hostname; } catch {}
+          const isCanvasDoc = doc.sourceUrl === 'local://canvas';
+          let hostname = isCanvasDoc ? 'Canvas' : doc.sourceUrl;
+          if (!isCanvasDoc) { try { hostname = new URL(doc.sourceUrl).hostname; } catch {} }
           return (
             <div key={doc.id}>
               <div
@@ -607,9 +608,11 @@ export const LayerPanel: React.FC = () => {
                   {isDocExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </button>
                 <span className="truncate flex-1">{hostname}</span>
-                <span className="text-[9px] font-normal" style={{ color: 'var(--penma-text-muted)' }}>
-                  {doc.viewport.width}×{doc.viewport.height}
-                </span>
+                {!isCanvasDoc && (
+                  <span className="text-[9px] font-normal" style={{ color: 'var(--penma-text-muted)' }}>
+                    {doc.viewport.width}×{doc.viewport.height}
+                  </span>
+                )}
                 <button
                   className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 ml-1"
                   style={{ color: 'var(--penma-text-muted)' }}
