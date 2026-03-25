@@ -65,7 +65,7 @@ export const SelectionOverlay: React.FC = () => {
   // ── Resize state ──
   const [isResizing, setIsResizing] = useState(false);
   const resizeDir = useRef<ResizeDir>('se');
-  const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, nodeId: '' });
+  const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, nodeId: '' });
   /** Cached sibling screen rects for resize snapping */
   const resizeSiblingRectsRef = useRef<SnapRect[]>([]);
   /** Initial screen rect of resizing element */
@@ -278,11 +278,14 @@ export const SelectionOverlay: React.FC = () => {
     const el = document.querySelector(`[data-penma-id="${selectedIds[0]}"]`) as HTMLElement | null;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    const cs = window.getComputedStyle(el);
     resizeStart.current = {
       x: e.clientX,
       y: e.clientY,
       width: rect.width / camera.zoom,
       height: rect.height / camera.zoom,
+      top: parseFloat(cs.top) || 0,
+      left: parseFloat(cs.left) || 0,
       nodeId: selectedIds[0],
     };
     resizeInitScreenRef.current = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -356,29 +359,38 @@ export const SelectionOverlay: React.FC = () => {
       lastSnapDy = snap.dy;
       setSmartGuides(snap.guides, []);
 
-      // Compute final doc-space dimensions
+      // Compute final doc-space dimensions and position
       let newW = resizeStart.current.width;
       let newH = resizeStart.current.height;
+      let newLeft = resizeStart.current.left;
+      let newTop = resizeStart.current.top;
       const adjDx = (screenDx + snap.dx) / camera.zoom;
       const adjDy = (screenDy + snap.dy) / camera.zoom;
       if (dir.includes('e')) newW += adjDx;
-      if (dir.includes('w')) newW -= adjDx;
+      if (dir.includes('w')) { newW -= adjDx; newLeft += adjDx; }
       if (dir.includes('s')) newH += adjDy;
-      if (dir.includes('n')) newH -= adjDy;
+      if (dir.includes('n')) { newH -= adjDy; newTop += adjDy; }
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
       el.style.width = `${newW}px`;
       el.style.height = `${newH}px`;
+      if (dir.includes('w')) el.style.left = `${newLeft}px`;
+      if (dir.includes('n')) el.style.top = `${newTop}px`;
 
       // Live-sync bounds to store (throttled via RAF) so sidebar updates in real-time
       const syncW = newW;
       const syncH = newH;
+      const syncLeft = newLeft;
+      const syncTop = newTop;
       cancelAnimationFrame(boundsSyncRaf);
       boundsSyncRaf = requestAnimationFrame(() => {
-        updateNodeBounds(resizeStart.current.nodeId, {
+        const boundsUpdate: Record<string, number> = {
           width: Math.round(syncW),
           height: Math.round(syncH),
-        });
+        };
+        if (dir.includes('w')) boundsUpdate.x = Math.round(syncLeft);
+        if (dir.includes('n')) boundsUpdate.y = Math.round(syncTop);
+        updateNodeBounds(resizeStart.current.nodeId, boundsUpdate);
       });
     };
 
@@ -392,24 +404,38 @@ export const SelectionOverlay: React.FC = () => {
       const dir = resizeDir.current;
       let newW = resizeStart.current.width;
       let newH = resizeStart.current.height;
+      let newLeft = resizeStart.current.left;
+      let newTop = resizeStart.current.top;
       const adjDx = (screenDx + lastSnapDx) / camera.zoom;
       const adjDy = (screenDy + lastSnapDy) / camera.zoom;
       if (dir.includes('e')) newW += adjDx;
-      if (dir.includes('w')) newW -= adjDx;
+      if (dir.includes('w')) { newW -= adjDx; newLeft += adjDx; }
       if (dir.includes('s')) newH += adjDy;
-      if (dir.includes('n')) newH -= adjDy;
+      if (dir.includes('n')) { newH -= adjDy; newTop += adjDy; }
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
       pushHistory('Resize element');
       const nodeId = resizeStart.current.nodeId;
-      updateNodeStyles(nodeId, {
+
+      const styleUpdate: Record<string, string> = {
         width: `${Math.round(newW)}px`,
         height: `${Math.round(newH)}px`,
-      });
-      updateNodeBounds(nodeId, {
+      };
+      const boundsUpdate: Record<string, number> = {
         width: Math.round(newW),
         height: Math.round(newH),
-      });
+      };
+      if (dir.includes('w')) {
+        styleUpdate.left = `${Math.round(newLeft)}px`;
+        boundsUpdate.x = Math.round(newLeft);
+      }
+      if (dir.includes('n')) {
+        styleUpdate.top = `${Math.round(newTop)}px`;
+        boundsUpdate.y = Math.round(newTop);
+      }
+
+      updateNodeStyles(nodeId, styleUpdate);
+      updateNodeBounds(nodeId, boundsUpdate);
     };
 
     window.addEventListener('pointermove', handleMove);

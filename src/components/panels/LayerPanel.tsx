@@ -319,6 +319,7 @@ export const LayerPanel: React.FC = () => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const selectMultiple = useEditorStore((s) => s.selectMultiple);
   const select = useEditorStore((s) => s.select);
+  const lastSelectedId = useEditorStore((s) => s.lastSelectedId);
   const reorderNode = useEditorStore((s) => s.reorderNode);
   const pushHistory = useEditorStore((s) => s.pushHistory);
   void activePageId;
@@ -328,10 +329,15 @@ export const LayerPanel: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Flat list of all visible node IDs in tree order (for range/drag selection)
+  // Always include rootNode.id (the level-0 frame header is always visible)
   const visibleIds = useMemo(() => {
     const ids: string[] = [];
     for (const doc of documents) {
-      if (!expanded.ids.has(doc.id)) continue;
+      if (!expanded.ids.has(doc.id)) {
+        // Document collapsed — only the frame header (rootNode) is visible
+        ids.push(doc.rootNode.id);
+        continue;
+      }
       ids.push(...getVisibleNodeIds(doc.rootNode, expanded.ids));
     }
     return ids;
@@ -562,6 +568,7 @@ export const LayerPanel: React.FC = () => {
         {documents.map((doc) => {
           const isActive = doc.id === activeDocumentId;
           const isDocExpanded = expanded.ids.has(doc.id);
+          const isFrameSelected = selectedIds.includes(doc.rootNode.id);
           let hostname = doc.sourceUrl;
           try { hostname = new URL(doc.sourceUrl).hostname; } catch {}
           return (
@@ -569,13 +576,32 @@ export const LayerPanel: React.FC = () => {
               <div
                 data-layer-id={doc.rootNode.id}
                 data-layer-depth="0"
-                className="group flex h-7 items-center gap-1 px-1 text-xs cursor-pointer"
+                className={`group flex h-7 items-center gap-1 px-1 text-xs cursor-pointer select-none
+                  ${isFrameSelected ? 'bg-blue-50 text-blue-700' : ''}`}
                 style={{
-                  background: isActive ? 'var(--penma-primary-light)' : 'transparent',
-                  color: isActive ? 'var(--penma-primary)' : 'var(--penma-text-secondary)',
+                  background: isFrameSelected ? undefined : (isActive ? 'var(--penma-primary-light)' : 'transparent'),
+                  color: isFrameSelected ? undefined : (isActive ? 'var(--penma-primary)' : 'var(--penma-text-secondary)'),
                   fontWeight: 600, fontFamily: 'var(--font-heading)',
                 }}
-                onClick={() => { setActiveDocument(doc.id); expanded.toggle(doc.id); }}
+                onClick={(e) => {
+                  setActiveDocument(doc.id);
+                  if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
+                    const anchorIdx = visibleIds.indexOf(lastSelectedId);
+                    const clickIdx = visibleIds.indexOf(doc.rootNode.id);
+                    if (anchorIdx !== -1 && clickIdx !== -1) {
+                      const start = Math.min(anchorIdx, clickIdx);
+                      const end = Math.max(anchorIdx, clickIdx);
+                      selectMultiple(visibleIds.slice(start, end + 1));
+                      return;
+                    }
+                  }
+                  select(doc.rootNode.id, false);
+                }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  handleDragStart(doc.rootNode.id, hostname, e.clientY, isFrameSelected);
+                }}
               >
                 <button className="flex h-5 w-5 items-center justify-center" onClick={(e) => { e.stopPropagation(); expanded.toggle(doc.id); }}>
                   {isDocExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

@@ -2,11 +2,41 @@
 
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '@/store/editor-store';
+import { saveProjectToLocal } from '@/lib/local-persistence';
 
-const AUTO_SAVE_DELAY = 2000;
+const LOCAL_SAVE_DELAY = 500; // Save to localStorage quickly
+const DB_SYNC_DELAY = 2000; // Sync to database less frequently
+
+/** Merge current editor state into the pages array for persistence */
+function getMergedPages() {
+  const s = useEditorStore.getState();
+  return s.pages.map((p) =>
+    p.id === s.activePageId
+      ? {
+          ...p,
+          documents: s.documents,
+          activeDocumentId: s.activeDocumentId,
+          selectedIds: s.selectedIds,
+          camera: s.camera,
+        }
+      : p
+  );
+}
+
+/** Flush current state to localStorage (synchronous, safe for beforeunload) */
+function flushToLocal() {
+  const s = useEditorStore.getState();
+  if (!s.projectId || !s.isDirty) return;
+  saveProjectToLocal(s.projectId, {
+    pages: getMergedPages(),
+    projectName: s.projectName,
+    savedAt: Date.now(),
+  });
+}
 
 export function useAutoSave() {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevRef = useRef<{
     documents: unknown;
     pages: unknown;
@@ -48,18 +78,30 @@ export function useAutoSave() {
 
       useEditorStore.getState().markDirty();
 
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
+      // 1. Save to localStorage quickly (safety net)
+      if (localTimerRef.current) clearTimeout(localTimerRef.current);
+      localTimerRef.current = setTimeout(() => {
+        flushToLocal();
+      }, LOCAL_SAVE_DELAY);
+
+      // 2. Sync to database with longer delay
+      if (dbTimerRef.current) clearTimeout(dbTimerRef.current);
+      dbTimerRef.current = setTimeout(() => {
         const { isSaving, saveProject } = useEditorStore.getState();
         if (!isSaving) {
           saveProject();
         }
-      }, AUTO_SAVE_DELAY);
+      }, DB_SYNC_DELAY);
     });
+
+    // Flush to localStorage on page unload (last-chance save)
+    window.addEventListener('beforeunload', flushToLocal);
 
     return () => {
       unsub();
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (localTimerRef.current) clearTimeout(localTimerRef.current);
+      if (dbTimerRef.current) clearTimeout(dbTimerRef.current);
+      window.removeEventListener('beforeunload', flushToLocal);
     };
   }, []);
 }

@@ -2,6 +2,11 @@ import type { StateCreator } from 'zustand';
 import { v4 as uuid } from 'uuid';
 import type { EditorState } from '../editor-store';
 import type { PenmaPage } from './pages-slice';
+import {
+  saveProjectToLocal,
+  loadProjectFromLocal,
+  clearProjectLocal,
+} from '@/lib/local-persistence';
 
 export interface ProjectSlice {
   projectId: string | null;
@@ -35,8 +40,15 @@ export const createProjectSlice: StateCreator<
     if (!res.ok) throw new Error('Failed to load project');
 
     const data = await res.json();
-    const pages: PenmaPage[] = (data.pages ?? []).map(
-      (p: Record<string, unknown>) => ({
+    const dbUpdatedAt = new Date(data.updatedAt).getTime();
+
+    // Check if localStorage has newer unsaved data (crash recovery)
+    const localSave = loadProjectFromLocal(id);
+    const useLocal = localSave && localSave.savedAt > dbUpdatedAt;
+    const rawPages = useLocal ? localSave.pages : (data.pages ?? []);
+
+    const pages: PenmaPage[] = (rawPages as Record<string, unknown>[]).map(
+      (p) => ({
         id: (p.id || p._id) as string,
         name: (p.name || 'Page') as string,
         documents: (p.documents ?? []) as PenmaPage['documents'],
@@ -55,9 +67,10 @@ export const createProjectSlice: StateCreator<
     set({
       // Project metadata
       projectId: data.id,
-      projectName: data.name,
+      projectName: useLocal ? localSave.projectName : data.name,
       publicShareId: data.publicShareId ?? null,
-      isDirty: false,
+      // If we recovered from local, mark dirty so it syncs to DB
+      isDirty: !!useLocal,
       lastSavedAt: new Date(data.updatedAt),
       // All pages with their full state
       pages,
@@ -79,23 +92,30 @@ export const createProjectSlice: StateCreator<
     const state = get();
     if (!state.projectId) return;
 
+    // Save current page state into pages array before persisting
+    const pages = state.pages.map((p) => {
+      if (p.id === state.activePageId) {
+        return {
+          ...p,
+          documents: state.documents,
+          activeDocumentId: state.activeDocumentId,
+          selectedIds: state.selectedIds,
+          camera: state.camera,
+        };
+      }
+      return p;
+    });
+
+    // Save to localStorage first (immediate safety net before network call)
+    saveProjectToLocal(state.projectId, {
+      pages,
+      projectName: state.projectName,
+      savedAt: Date.now(),
+    });
+
     set({ isSaving: true });
 
     try {
-      // Save current page state into pages array before persisting
-      const pages = state.pages.map((p) => {
-        if (p.id === state.activePageId) {
-          return {
-            ...p,
-            documents: state.documents,
-            activeDocumentId: state.activeDocumentId,
-            selectedIds: state.selectedIds,
-            camera: state.camera,
-          };
-        }
-        return p;
-      });
-
       // Convert pages to plain serializable objects for the API
       const serializedPages = pages.map((p) => {
         const raw = p as unknown as Record<string, unknown>;
@@ -125,6 +145,9 @@ export const createProjectSlice: StateCreator<
 
       const result = await res.json();
       set({ isDirty: false, lastSavedAt: new Date(result.updatedAt) });
+
+      // DB is now up to date — clear local save
+      clearProjectLocal(state.projectId);
     } finally {
       set({ isSaving: false });
     }
