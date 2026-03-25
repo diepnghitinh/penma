@@ -454,6 +454,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
   return (
     <Tag
       data-penma-id={node.id}
+      {...(node.autoLayout ? { 'data-penma-frame': 'true' } : {})}
       style={style}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}

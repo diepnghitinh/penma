@@ -5,7 +5,9 @@ import type { EditorState } from '../editor-store';
 export interface SelectionSlice {
   selectedIds: string[];
   hoveredId: string | null;
+  lastSelectedId: string | null;
   select: (id: string, additive?: boolean) => void;
+  selectMultiple: (ids: string[]) => void;
   deselect: (id: string) => void;
   clearSelection: () => void;
   selectAll: () => void;
@@ -20,6 +22,7 @@ export const createSelectionSlice: StateCreator<
 > = (set, get) => ({
   selectedIds: [],
   hoveredId: null,
+  lastSelectedId: null,
 
   select: (id, additive = false) =>
     set((state) => {
@@ -29,17 +32,20 @@ export const createSelectionSlice: StateCreator<
           selectedIds: exists
             ? state.selectedIds.filter((s) => s !== id)
             : [...state.selectedIds, id],
+          lastSelectedId: id,
         };
       }
-      return { selectedIds: [id] };
+      return { selectedIds: [id], lastSelectedId: id };
     }),
+
+  selectMultiple: (ids) => set({ selectedIds: ids }),
 
   deselect: (id) =>
     set((state) => ({
       selectedIds: state.selectedIds.filter((s) => s !== id),
     })),
 
-  clearSelection: () => set({ selectedIds: [] }),
+  clearSelection: () => set({ selectedIds: [], lastSelectedId: null }),
 
   selectAll: () => {
     const state = get();

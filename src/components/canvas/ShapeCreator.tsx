@@ -27,6 +27,7 @@ export const ShapeCreator: React.FC<{
   const [drawing, setDrawing] = useState<DrawRect | null>(null);
   const isDrawing = useRef(false);
   const startScreen = useRef({ x: 0, y: 0 });
+  const targetFrameId = useRef<string | null>(null);
 
   const isShapeTool = SHAPE_TOOLS.has(activeTool);
 
@@ -34,13 +35,24 @@ export const ShapeCreator: React.FC<{
   const handlePointerDown = useCallback(
     (e: PointerEvent) => {
       if (!isShapeTool || e.button !== 0) return;
-      // Only on canvas background or viewport
       const target = e.target as HTMLElement;
-      if (target.closest('[data-penma-id]')) return; // clicked on an element
 
+      // Allow drawing on canvas background OR inside frames
+      const frameEl = target.closest('[data-penma-frame]') as HTMLElement | null;
+      const penmaEl = target.closest('[data-penma-id]') as HTMLElement | null;
+      if (penmaEl && !frameEl) return; // clicked on a non-frame element
+      // If clicked on a non-frame child inside a frame, still allow (frameEl will be set)
+
+      targetFrameId.current = frameEl?.getAttribute('data-penma-id') ?? null;
       isDrawing.current = true;
       startScreen.current = { x: e.clientX, y: e.clientY };
       setDrawing(null);
+
+      // Prevent frame selection/drag when drawing inside it
+      if (frameEl) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
     },
     [isShapeTool]
   );
@@ -95,7 +107,25 @@ export const ShapeCreator: React.FC<{
       if (w < 10) w = activeTool === 'line' || activeTool === 'arrow' ? 200 : 100;
       if (h < 10) h = activeTool === 'line' || activeTool === 'arrow' ? 2 : 100;
 
-      const node = createShapeNode(activeTool, x, y, w, h);
+      const drawnInFrameId = targetFrameId.current;
+      let finalX = x;
+      let finalY = y;
+
+      if (drawnInFrameId) {
+        // Compute position relative to the frame element.
+        // frameRect is in screen pixels (already scaled by zoom),
+        // so divide the screen-pixel offset by zoom to get CSS pixels inside the frame.
+        const frameEl = canvasEl?.querySelector(`[data-penma-id="${drawnInFrameId}"]`) as HTMLElement | null;
+        if (frameEl) {
+          const frameRect = frameEl.getBoundingClientRect();
+          const sx = Math.min(startScreen.current.x, e.clientX);
+          const sy = Math.min(startScreen.current.y, e.clientY);
+          finalX = (sx - frameRect.left) / cam.zoom;
+          finalY = (sy - frameRect.top) / cam.zoom;
+        }
+      }
+
+      const node = createShapeNode(activeTool, finalX, finalY, w, h);
       if (node) {
         // Auto-create a canvas document if none exists
         if (store.documents.length === 0) {
@@ -121,10 +151,15 @@ export const ShapeCreator: React.FC<{
           });
         }
         store.pushHistory(`Create ${activeTool}`);
-        store.addNodeToActiveDocument(node);
+        if (drawnInFrameId) {
+          store.addNodeToParent(drawnInFrameId, node);
+        } else {
+          store.addNodeToActiveDocument(node);
+        }
         store.select(node.id);
         store.setActiveTool('select');
       }
+      targetFrameId.current = null;
 
       setDrawing(null);
     },
@@ -177,8 +212,9 @@ export const ShapeCreator: React.FC<{
 
 function createShapeNode(
   tool: Tool,
-  x: number, y: number, w: number, h: number
+  x: number, y: number, w: number, h: number,
 ): PenmaNode | null {
+  const position = 'absolute';
   const id = uuid();
   const base: PenmaNode = {
     id,
@@ -203,7 +239,7 @@ function createShapeNode(
             height: `${Math.round(h)}px`,
             'background-color': '#D9D9D9',
             'border-radius': '0px',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -221,7 +257,7 @@ function createShapeNode(
             height: `${Math.round(h)}px`,
             'background-color': '#D9D9D9',
             'border-radius': '50%',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -249,7 +285,7 @@ function createShapeNode(
             height: `${Math.round(h)}px`,
             'background-color': '#FFFFFF',
             overflow: 'hidden',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -266,7 +302,7 @@ function createShapeNode(
             width: `${Math.round(w)}px`,
             height: '0px',
             'border-top': '2px solid #1E293B',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -282,7 +318,7 @@ function createShapeNode(
         styles: {
           computed: {},
           overrides: {
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -300,7 +336,7 @@ function createShapeNode(
           overrides: {
             width: `${Math.round(w)}px`,
             height: `${Math.round(h)}px`,
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -318,7 +354,7 @@ function createShapeNode(
           overrides: {
             width: `${Math.round(w)}px`,
             height: `${Math.round(h)}px`,
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -337,7 +373,7 @@ function createShapeNode(
             'font-size': '16px',
             'font-family': 'Inter, sans-serif',
             color: '#1E293B',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },
@@ -360,7 +396,7 @@ function createShapeNode(
             'justify-content': 'center',
             'font-size': '12px',
             color: '#94A3B8',
-            position: 'relative',
+            position,
             left: `${Math.round(x)}px`,
             top: `${Math.round(y)}px`,
           },

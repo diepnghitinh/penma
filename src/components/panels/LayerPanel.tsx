@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -48,6 +48,7 @@ interface DragInfo {
   nodeId: string;
   nodeName: string;
   startY: number;
+  mode: 'reorder' | 'select';
 }
 
 interface DropTarget {
@@ -67,6 +68,18 @@ function isDescendant(root: PenmaNode, ancestorId: string, nodeId: string): bool
   return !!findNodeById(ancestor, nodeId) && ancestorId !== nodeId;
 }
 
+// ─── Visible node IDs (in tree order) ───────────────────────
+
+function getVisibleNodeIds(node: PenmaNode, expandedIds: Set<string>): string[] {
+  const result: string[] = [node.id];
+  if (expandedIds.has(node.id) && node.children.length > 0) {
+    for (const child of node.children) {
+      result.push(...getVisibleNodeIds(child, expandedIds));
+    }
+  }
+  return result;
+}
+
 // ─── Layer item ─────────────────────────────────────────────
 
 interface LayerItemProps {
@@ -75,13 +88,16 @@ interface LayerItemProps {
   expanded: ExpandedState;
   dragInfo: DragInfo | null;
   dropTarget: DropTarget | null;
-  onDragStart: (nodeId: string, nodeName: string, y: number) => void;
+  onDragStart: (nodeId: string, nodeName: string, y: number, isSelected: boolean) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  visibleIds: string[];
 }
 
-const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded, dragInfo, dropTarget, onDragStart, scrollRef }) => {
+const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded, dragInfo, dropTarget, onDragStart, scrollRef, visibleIds }) => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const select = useEditorStore((s) => s.select);
+  const selectMultiple = useEditorStore((s) => s.selectMultiple);
+  const lastSelectedId = useEditorStore((s) => s.lastSelectedId);
   const toggleNodeVisibility = useEditorStore((s) => s.toggleNodeVisibility);
   const toggleNodeLock = useEditorStore((s) => s.toggleNodeLock);
   const renameNode = useEditorStore((s) => s.renameNode);
@@ -126,10 +142,23 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    select(node.id, e.shiftKey);
+    if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
+      // Range selection: select all items between anchor and clicked
+      const anchorIdx = visibleIds.indexOf(lastSelectedId);
+      const clickIdx = visibleIds.indexOf(node.id);
+      if (anchorIdx !== -1 && clickIdx !== -1) {
+        const start = Math.min(anchorIdx, clickIdx);
+        const end = Math.max(anchorIdx, clickIdx);
+        selectMultiple(visibleIds.slice(start, end + 1));
+        const el = document.querySelector(`[data-penma-id="${node.id}"]`);
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+    }
+    select(node.id, false);
     const el = document.querySelector(`[data-penma-id="${node.id}"]`);
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [node.id, select]);
+  }, [node.id, select, selectMultiple, lastSelectedId, visibleIds]);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,8 +169,8 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
     if (isRenaming || e.button !== 0) return;
     // Don't start drag from buttons
     if ((e.target as HTMLElement).closest('button')) return;
-    onDragStart(node.id, label, e.clientY);
-  }, [node.id, label, isRenaming, onDragStart]);
+    onDragStart(node.id, label, e.clientY, isSelected);
+  }, [node.id, label, isRenaming, isSelected, onDragStart]);
 
   return (
     <div>
@@ -215,7 +244,7 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
       {/* Children */}
       {isExpanded && hasChildren && node.children.map((child) => (
         <LayerItem key={child.id} node={child} depth={depth + 1} expanded={expanded}
-          dragInfo={dragInfo} dropTarget={dropTarget} onDragStart={onDragStart} scrollRef={scrollRef} />
+          dragInfo={dragInfo} dropTarget={dropTarget} onDragStart={onDragStart} scrollRef={scrollRef} visibleIds={visibleIds} />
       ))}
     </div>
   );
@@ -288,6 +317,8 @@ export const LayerPanel: React.FC = () => {
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
   const removeDocument = useEditorStore((s) => s.removeDocument);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectMultiple = useEditorStore((s) => s.selectMultiple);
+  const select = useEditorStore((s) => s.select);
   const reorderNode = useEditorStore((s) => s.reorderNode);
   const pushHistory = useEditorStore((s) => s.pushHistory);
   void activePageId;
@@ -296,14 +327,24 @@ export const LayerPanel: React.FC = () => {
   const prevSelectedRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Flat list of all visible node IDs in tree order (for range/drag selection)
+  const visibleIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const doc of documents) {
+      if (!expanded.ids.has(doc.id)) continue;
+      ids.push(...getVisibleNodeIds(doc.rootNode, expanded.ids));
+    }
+    return ids;
+  }, [documents, expanded.ids]);
+
   // ── Pointer-based drag state ──
   const [dragInfo, setDragInfo] = useState<DragInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [ghostY, setGhostY] = useState(0);
   const dragThresholdMet = useRef(false);
 
-  const handleDragStart = useCallback((nodeId: string, nodeName: string, y: number) => {
-    setDragInfo({ nodeId, nodeName, startY: y });
+  const handleDragStart = useCallback((nodeId: string, nodeName: string, y: number, isSelected: boolean) => {
+    setDragInfo({ nodeId, nodeName, startY: y, mode: isSelected ? 'reorder' : 'select' });
     setGhostY(y);
     dragThresholdMet.current = false;
   }, []);
@@ -317,13 +358,44 @@ export const LayerPanel: React.FC = () => {
       if (!dragThresholdMet.current) {
         if (Math.abs(e.clientY - dragInfo.startY) < 5) return;
         dragThresholdMet.current = true;
+        // For select mode, select the start item immediately
+        if (dragInfo.mode === 'select') {
+          select(dragInfo.nodeId, false);
+        }
       }
 
-      setGhostY(e.clientY);
-
-      // Find the layer row under cursor
       const scrollEl = scrollRef.current;
       if (!scrollEl) return;
+
+      // ── Drag-to-select mode ──
+      if (dragInfo.mode === 'select') {
+        // Find the layer row closest to the cursor
+        const els = scrollEl.querySelectorAll<HTMLElement>('[data-layer-id]');
+        let closestId: string | null = null;
+        let closestDist = Infinity;
+        for (const el of els) {
+          const id = el.getAttribute('data-layer-id')!;
+          const rect = el.getBoundingClientRect();
+          const dist = Math.abs(e.clientY - (rect.top + rect.height / 2));
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestId = id;
+          }
+        }
+        if (closestId) {
+          const startIdx = visibleIds.indexOf(dragInfo.nodeId);
+          const endIdx = visibleIds.indexOf(closestId);
+          if (startIdx !== -1 && endIdx !== -1) {
+            const from = Math.min(startIdx, endIdx);
+            const to = Math.max(startIdx, endIdx);
+            selectMultiple(visibleIds.slice(from, to + 1));
+          }
+        }
+        return;
+      }
+
+      // ── Reorder mode ──
+      setGhostY(e.clientY);
 
       const els = scrollEl.querySelectorAll<HTMLElement>('[data-layer-id]');
       let best: { el: HTMLElement; id: string; depth: number } | null = null;
@@ -356,8 +428,6 @@ export const LayerPanel: React.FC = () => {
       const scrollRect = scrollEl.getBoundingClientRect();
       const relY = rect.top - scrollRect.top + scrollEl.scrollTop;
       const ratio = (e.clientY - rect.top) / rect.height;
-      // Check if this node can accept children (is a container)
-      // Containers: nodes with existing children, autoLayout, or container-like tags
       const CONTAINER_TAGS = new Set(['div', 'section', 'nav', 'header', 'footer', 'main', 'article', 'aside', 'ul', 'ol', 'form', 'body']);
       const isContainer = (() => {
         for (const doc of documents) {
@@ -366,14 +436,13 @@ export const LayerPanel: React.FC = () => {
           if (n.children.length > 0) return true;
           if (n.autoLayout) return true;
           if (CONTAINER_TAGS.has(n.tagName)) return true;
-          // Document root is always a container
           if (doc.rootNode.id === n.id) return true;
         }
         return false;
       })();
 
       let position: 'before' | 'after' | 'inside';
-      let indicatorDepth = best.depth;
+      const indicatorDepth = best.depth;
 
       if (isContainer && ratio > 0.25 && ratio < 0.75) {
         position = 'inside';
@@ -393,7 +462,7 @@ export const LayerPanel: React.FC = () => {
     };
 
     const handleUp = () => {
-      if (dragThresholdMet.current && dropTarget && dragInfo) {
+      if (dragThresholdMet.current && dragInfo.mode === 'reorder' && dropTarget && dragInfo) {
         let targetParentId: string | null = null;
         let targetIndex = 0;
 
@@ -440,7 +509,7 @@ export const LayerPanel: React.FC = () => {
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dragInfo, dropTarget, documents, expanded, pushHistory, reorderNode]);
+  }, [dragInfo, dropTarget, documents, expanded, pushHistory, reorderNode, visibleIds, select, selectMultiple]);
 
   // Auto-expand ancestors when selection changes
   useEffect(() => {
@@ -527,18 +596,18 @@ export const LayerPanel: React.FC = () => {
               {isDocExpanded && (
                 <LayerItem node={doc.rootNode} depth={1} expanded={expanded}
                   dragInfo={dragThresholdMet.current ? dragInfo : null} dropTarget={dropTarget}
-                  onDragStart={handleDragStart} scrollRef={scrollRef} />
+                  onDragStart={handleDragStart} scrollRef={scrollRef} visibleIds={visibleIds} />
               )}
             </div>
           );
         })}
 
-        {/* Drop indicator */}
-        {dragThresholdMet.current && dragInfo && dropTarget && <DropIndicator target={dropTarget} />}
+        {/* Drop indicator (reorder mode only) */}
+        {dragThresholdMet.current && dragInfo && dragInfo.mode === 'reorder' && dropTarget && <DropIndicator target={dropTarget} />}
       </div>
 
-      {/* Ghost preview (fixed, outside scroll) */}
-      {dragThresholdMet.current && dragInfo && <DragGhost name={dragInfo.nodeName} y={ghostY} />}
+      {/* Ghost preview (reorder mode only) */}
+      {dragThresholdMet.current && dragInfo && dragInfo.mode === 'reorder' && <DragGhost name={dragInfo.nodeName} y={ghostY} />}
     </div>
   );
 };

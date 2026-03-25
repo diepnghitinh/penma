@@ -470,7 +470,7 @@ const FrameContainer: React.FC<{
       }}
     >
       {/* Inner wrapper: unconstrained so its natural size reflects content */}
-      <div ref={contentRef} style={{ display: 'inline-block', minWidth: '100%' }}>
+      <div ref={contentRef} style={{ display: 'inline-block', minWidth: '100%', position: 'relative' }}>
         <DocumentRenderer node={doc.rootNode} />
       </div>
     </div>

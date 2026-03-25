@@ -30,6 +30,7 @@ export interface DocumentSlice {
   renameNode: (nodeId: string, name: string) => void;
   updateNodeBounds: (nodeId: string, bounds: Partial<PenmaNode['bounds']>) => void;
   addNodeToActiveDocument: (node: PenmaNode) => void;
+  addNodeToParent: (parentId: string, node: PenmaNode) => void;
   deleteNodes: (nodeIds: string[]) => void;
   /** Move a node to a new index within its parent's children */
   reorderNode: (nodeId: string, targetParentId: string, targetIndex: number) => void;
@@ -499,6 +500,19 @@ export const createDocumentSlice: StateCreator<
             ? produce(d, (draft) => { draft.rootNode.children.push(node); })
             : d
         ),
+      };
+    }),
+
+  addNodeToParent: (parentId, node) =>
+    set((state) => {
+      return {
+        documents: state.documents.map((doc) => {
+          if (!findNodeById(doc.rootNode, parentId)) return doc;
+          return produce(doc, (draft) => {
+            const parent = findNodeById(draft.rootNode, parentId);
+            if (parent) parent.children.push(node);
+          });
+        }),
       };
     }),
 

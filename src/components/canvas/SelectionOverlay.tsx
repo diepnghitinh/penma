@@ -56,7 +56,7 @@ export const SelectionOverlay: React.FC = () => {
   // ── Drag-to-move state ──
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
-  const dragNodeOriginal = useRef<{ id: string; top: number; left: number }[]>([]);
+  const dragNodeOriginal = useRef<{ id: string; top: number; left: number; position: string }[]>([]);
   /** Cached sibling screen rects (built once at drag start) */
   const siblingRectsRef = useRef<SnapRect[]>([]);
   /** Initial bounding box of all dragged elements in screen space */
@@ -118,7 +118,7 @@ export const SelectionOverlay: React.FC = () => {
     setIsDragging(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
 
-    // Capture original positions
+    // Capture original positions and position type
     dragNodeOriginal.current = selectedIds.map((id) => {
       const el = document.querySelector(`[data-penma-id="${id}"]`) as HTMLElement | null;
       const cs = el ? window.getComputedStyle(el) : null;
@@ -126,10 +126,11 @@ export const SelectionOverlay: React.FC = () => {
         id,
         top: parseFloat(cs?.top || '0') || 0,
         left: parseFloat(cs?.left || '0') || 0,
+        position: cs?.position || 'relative',
       };
     });
 
-    // Ensure position:relative for move
+    // Ensure element is positioned for move
     for (const id of selectedIds) {
       const el = document.querySelector(`[data-penma-id="${id}"]`) as HTMLElement | null;
       if (el) {
@@ -244,7 +245,7 @@ export const SelectionOverlay: React.FC = () => {
         pushHistory('Move element');
         for (const orig of dragNodeOriginal.current) {
           updateNodeStyles(orig.id, {
-            position: 'relative',
+            position: orig.position,
             top: `${orig.top + dy}px`,
             left: `${orig.left + dx}px`,
           });
