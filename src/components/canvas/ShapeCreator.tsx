@@ -11,7 +11,8 @@ const SHAPE_TOOLS = new Set<Tool>([
   'rectangle', 'ellipse', 'line', 'arrow', 'star', 'polygon', 'frame', 'text',
 ]);
 
-interface DrawRect {
+/** Screen-space rectangle (clientX/clientY coords) */
+interface ScreenRect {
   x: number;
   y: number;
   width: number;
@@ -22,33 +23,31 @@ export const ShapeCreator: React.FC<{
   canvasRef: React.RefObject<HTMLDivElement | null>;
 }> = ({ canvasRef }) => {
   const activeTool = useEditorStore((s) => s.activeTool);
-  const camera = useEditorStore((s) => s.camera);
 
-  const [drawing, setDrawing] = useState<DrawRect | null>(null);
+  // Preview rect in screen coords — single source of truth during drawing
+  const [preview, setPreview] = useState<ScreenRect | null>(null);
   const isDrawing = useRef(false);
-  const startScreen = useRef({ x: 0, y: 0 });
+  const startClient = useRef({ x: 0, y: 0 });
   const targetFrameId = useRef<string | null>(null);
 
   const isShapeTool = SHAPE_TOOLS.has(activeTool);
 
-  // Pointer down — start drawing
+  // ── Pointer down — start drawing ──────────────────────────
+
   const handlePointerDown = useCallback(
     (e: PointerEvent) => {
       if (!isShapeTool || e.button !== 0) return;
       const target = e.target as HTMLElement;
 
-      // Allow drawing on canvas background OR inside frames
       const frameEl = target.closest('[data-penma-frame]') as HTMLElement | null;
       const penmaEl = target.closest('[data-penma-id]') as HTMLElement | null;
-      if (penmaEl && !frameEl) return; // clicked on a non-frame element
-      // If clicked on a non-frame child inside a frame, still allow (frameEl will be set)
+      if (penmaEl && !frameEl) return;
 
       targetFrameId.current = frameEl?.getAttribute('data-penma-id') ?? null;
       isDrawing.current = true;
-      startScreen.current = { x: e.clientX, y: e.clientY };
-      setDrawing(null);
+      startClient.current = { x: e.clientX, y: e.clientY };
+      setPreview(null);
 
-      // Prevent frame selection/drag when drawing inside it
       if (frameEl) {
         e.stopPropagation();
         e.preventDefault();
@@ -57,19 +56,23 @@ export const ShapeCreator: React.FC<{
     [isShapeTool]
   );
 
+  // ── Pointer move — update preview in screen coords ────────
+
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
       if (!isDrawing.current) return;
-      const x = Math.min(startScreen.current.x, e.clientX);
-      const y = Math.min(startScreen.current.y, e.clientY);
-      const w = Math.abs(e.clientX - startScreen.current.x);
-      const h = Math.abs(e.clientY - startScreen.current.y);
+      const x = Math.min(startClient.current.x, e.clientX);
+      const y = Math.min(startClient.current.y, e.clientY);
+      const w = Math.abs(e.clientX - startClient.current.x);
+      const h = Math.abs(e.clientY - startClient.current.y);
       if (w > 3 || h > 3) {
-        setDrawing({ x, y, width: w, height: h });
+        setPreview({ x, y, width: w, height: h });
       }
     },
     []
   );
+
+  // ── Pointer up — convert screen→document, create shape ────
 
   const handlePointerUp = useCallback(
     (e: PointerEvent) => {
@@ -78,51 +81,38 @@ export const ShapeCreator: React.FC<{
 
       const store = useEditorStore.getState();
       const cam = store.camera;
+      const canvasRect = canvasRef.current?.getBoundingClientRect();
+      if (!canvasRect) { setPreview(null); return; }
 
-      // Calculate document-space position
-      const canvasEl = canvasRef.current;
-      const canvasRect = canvasEl?.getBoundingClientRect();
-      if (!canvasRect) { setDrawing(null); return; }
+      // Convert start & end from screen (clientX/Y) → document space
+      const toDoc = (cx: number, cy: number) =>
+        screenToDocument({ x: cx - canvasRect.left, y: cy - canvasRect.top }, cam);
 
-      const startDoc = screenToDocument(
-        { x: startScreen.current.x - canvasRect.left, y: startScreen.current.y - canvasRect.top },
-        cam
-      );
-      const endDoc = screenToDocument(
-        { x: e.clientX - canvasRect.left, y: e.clientY - canvasRect.top },
-        cam
-      );
+      const startDoc = toDoc(startClient.current.x, startClient.current.y);
+      const endDoc = toDoc(e.clientX, e.clientY);
 
       let w = Math.abs(endDoc.x - startDoc.x);
       let h = Math.abs(endDoc.y - startDoc.y);
 
-      // Minimum size — if click without drag, use default size
+      // Minimum size for click-without-drag
       if (w < 10) w = activeTool === 'line' || activeTool === 'arrow' ? 200 : 100;
       if (h < 10) h = activeTool === 'line' || activeTool === 'arrow' ? 2 : 100;
 
+      let finalX = Math.min(startDoc.x, endDoc.x);
+      let finalY = Math.min(startDoc.y, endDoc.y);
+
       const drawnInFrameId = targetFrameId.current;
-      let finalX: number;
-      let finalY: number;
 
       if (drawnInFrameId) {
-        // Compute position relative to the frame element.
-        // frameRect is in screen pixels (already scaled by zoom),
-        // so divide the screen-pixel offset by zoom to get CSS pixels inside the frame.
-        const frameEl = canvasEl?.querySelector(`[data-penma-id="${drawnInFrameId}"]`) as HTMLElement | null;
+        // Inside a frame: position relative to frame element
+        const frameEl = canvasRef.current?.querySelector(`[data-penma-id="${drawnInFrameId}"]`) as HTMLElement | null;
         if (frameEl) {
           const frameRect = frameEl.getBoundingClientRect();
-          const sx = Math.min(startScreen.current.x, e.clientX);
-          const sy = Math.min(startScreen.current.y, e.clientY);
+          const sx = Math.min(startClient.current.x, e.clientX);
+          const sy = Math.min(startClient.current.y, e.clientY);
           finalX = (sx - frameRect.left) / cam.zoom;
           finalY = (sy - frameRect.top) / cam.zoom;
-        } else {
-          finalX = Math.min(startDoc.x, endDoc.x);
-          finalY = Math.min(startDoc.y, endDoc.y);
         }
-      } else {
-        // Drawing outside any frame — position in canvas space
-        finalX = Math.min(startDoc.x, endDoc.x);
-        finalY = Math.min(startDoc.y, endDoc.y);
       }
 
       const node = createShapeNode(activeTool, finalX, finalY, w, h);
@@ -131,18 +121,18 @@ export const ShapeCreator: React.FC<{
         if (drawnInFrameId) {
           store.addNodeToParent(drawnInFrameId, node);
         } else {
-          // Add to canvas document (created automatically if needed)
           store.addCanvasNode(node);
         }
         store.select(node.id);
         store.setActiveTool('select');
       }
       targetFrameId.current = null;
-
-      setDrawing(null);
+      setPreview(null);
     },
     [activeTool, canvasRef]
   );
+
+  // ── Register/unregister event listeners ───────────────────
 
   useEffect(() => {
     if (!isShapeTool) return;
@@ -159,28 +149,32 @@ export const ShapeCreator: React.FC<{
     };
   }, [isShapeTool, canvasRef, handlePointerDown, handlePointerMove, handlePointerUp]);
 
-  // Change cursor when shape tool is active
+  // ── Cursor ────────────────────────────────────────────────
+
   useEffect(() => {
     if (!canvasRef.current) return;
     canvasRef.current.style.cursor = isShapeTool ? 'crosshair' : '';
     return () => { if (canvasRef.current) canvasRef.current.style.cursor = ''; };
   }, [isShapeTool, canvasRef]);
 
-  if (!drawing) return null;
+  // ── Preview overlay ───────────────────────────────────────
+  // Rendered in screen coords (position: fixed) — exactly where the user dragged.
+  // No coordinate conversion needed — what you see is what you get.
 
-  // Preview rectangle
+  if (!preview) return null;
+
   return (
     <div
       className="fixed pointer-events-none"
       style={{
-        left: drawing.x,
-        top: drawing.y,
-        width: drawing.width,
-        height: drawing.height,
+        left: preview.x,
+        top: preview.y,
+        width: preview.width,
+        height: preview.height,
         border: '2px solid var(--penma-primary)',
         background: 'rgba(59, 130, 246, 0.06)',
         borderRadius: activeTool === 'ellipse' ? '50%' : activeTool === 'rectangle' || activeTool === 'frame' ? 2 : 0,
-        zIndex: 25,
+        zIndex: 9999,
       }}
     />
   );
@@ -194,13 +188,18 @@ function createShapeNode(
 ): PenmaNode | null {
   const position = 'absolute';
   const id = uuid();
+  const rx = Math.round(x);
+  const ry = Math.round(y);
+  const rw = Math.round(w);
+  const rh = Math.round(h);
+
   const base: PenmaNode = {
     id,
     tagName: 'div',
     attributes: {},
     children: [],
     styles: { computed: {}, overrides: {} },
-    bounds: { x, y, width: w, height: h },
+    bounds: { x: rx, y: ry, width: rw, height: rh },
     visible: true,
     locked: false,
   };
@@ -213,13 +212,9 @@ function createShapeNode(
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            'background-color': '#D9D9D9',
-            'border-radius': '0px',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            'background-color': '#D9D9D9', 'border-radius': '0px',
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -231,13 +226,9 @@ function createShapeNode(
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            'background-color': '#D9D9D9',
-            'border-radius': '50%',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            'background-color': '#D9D9D9', 'border-radius': '50%',
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -247,25 +238,17 @@ function createShapeNode(
         ...base,
         name: 'Frame',
         autoLayout: {
-          direction: 'vertical',
-          gap: 0,
+          direction: 'vertical', gap: 0,
           padding: { top: 0, right: 0, bottom: 0, left: 0 },
-          primaryAxisAlign: 'start',
-          counterAxisAlign: 'start',
-          independentPadding: false,
-          clipContent: true,
-          reverse: false,
+          primaryAxisAlign: 'start', counterAxisAlign: 'start',
+          independentPadding: false, clipContent: true, reverse: false,
         },
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            'background-color': '#FFFFFF',
-            overflow: 'hidden',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            'background-color': '#FFFFFF', overflow: 'hidden',
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -277,46 +260,38 @@ function createShapeNode(
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: '0px',
+            width: `${rw}px`, height: '0px',
             'border-top': '2px solid #1E293B',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
 
-    case 'arrow':
+    case 'arrow': {
+      const ah = Math.max(rh, 20);
       return {
         ...base,
         name: 'Arrow',
-        rawHtml: `<svg width="${Math.round(w)}" height="${Math.round(Math.max(h, 20))}" viewBox="0 0 ${Math.round(w)} ${Math.round(Math.max(h, 20))}" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="${Math.round(Math.max(h, 20) / 2)}" x2="${Math.round(w - 10)}" y2="${Math.round(Math.max(h, 20) / 2)}" stroke="#1E293B" stroke-width="2"/><polygon points="${Math.round(w)},${Math.round(Math.max(h, 20) / 2)} ${Math.round(w - 12)},${Math.round(Math.max(h, 20) / 2 - 5)} ${Math.round(w - 12)},${Math.round(Math.max(h, 20) / 2 + 5)}" fill="#1E293B"/></svg>`,
+        rawHtml: `<svg width="${rw}" height="${ah}" viewBox="0 0 ${rw} ${ah}" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="${ah / 2}" x2="${rw - 10}" y2="${ah / 2}" stroke="#1E293B" stroke-width="2"/><polygon points="${rw},${ah / 2} ${rw - 12},${ah / 2 - 5} ${rw - 12},${ah / 2 + 5}" fill="#1E293B"/></svg>`,
         tagName: 'div',
         styles: {
           computed: {},
-          overrides: {
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
-          },
+          overrides: { position, left: `${rx}px`, top: `${ry}px` },
         },
       };
+    }
 
     case 'polygon':
       return {
         ...base,
         name: 'Polygon',
-        rawHtml: `<svg width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 100 100" fill="#D9D9D9" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,40 80,95 20,95 5,40"/></svg>`,
+        rawHtml: `<svg width="${rw}" height="${rh}" viewBox="0 0 100 100" fill="#D9D9D9" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,40 80,95 20,95 5,40"/></svg>`,
         tagName: 'div',
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -325,16 +300,13 @@ function createShapeNode(
       return {
         ...base,
         name: 'Star',
-        rawHtml: `<svg width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 100 100" fill="#D9D9D9" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35"/></svg>`,
+        rawHtml: `<svg width="${rw}" height="${rh}" viewBox="0 0 100 100" fill="#D9D9D9" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35"/></svg>`,
         tagName: 'div',
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -348,12 +320,8 @@ function createShapeNode(
         styles: {
           computed: {},
           overrides: {
-            'font-size': '16px',
-            'font-family': 'Inter, sans-serif',
-            color: '#1E293B',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            'font-size': '16px', 'font-family': 'Inter, sans-serif', color: '#1E293B',
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
       };
@@ -363,23 +331,17 @@ function createShapeNode(
         ...base,
         tagName: 'div',
         name: 'Image placeholder',
+        textContent: 'Image',
         styles: {
           computed: {},
           overrides: {
-            width: `${Math.round(w)}px`,
-            height: `${Math.round(h)}px`,
-            'background-color': '#E2E8F0',
-            display: 'flex',
-            'align-items': 'center',
-            'justify-content': 'center',
-            'font-size': '12px',
-            color: '#94A3B8',
-            position,
-            left: `${Math.round(x)}px`,
-            top: `${Math.round(y)}px`,
+            width: `${rw}px`, height: `${rh}px`,
+            'background-color': '#E2E8F0', display: 'flex',
+            'align-items': 'center', 'justify-content': 'center',
+            'font-size': '12px', color: '#94A3B8',
+            position, left: `${rx}px`, top: `${ry}px`,
           },
         },
-        textContent: 'Image',
       };
 
     default:

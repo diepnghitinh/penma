@@ -26,14 +26,15 @@ export const MarqueeSelect: React.FC<{
   const handlePointerDown = useCallback(
     (e: PointerEvent) => {
       if (activeTool !== 'select' || e.button !== 0) return;
-      // Only start marquee on the canvas background itself
-      if (e.target !== canvasRef.current) return;
+      // Only start marquee on empty canvas space (not on a penma element)
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-penma-id]')) return;
 
       isDragging.current = true;
       startPos.current = { x: e.clientX, y: e.clientY };
       setMarquee(null);
     },
-    [activeTool, canvasRef]
+    [activeTool]
   );
 
   const handlePointerMove = useCallback(
@@ -133,7 +134,7 @@ export const MarqueeSelect: React.FC<{
         height: marquee.height,
         border: '1px solid var(--penma-primary)',
         backgroundColor: 'rgba(59, 130, 246, 0.08)',
-        zIndex: 25,
+        zIndex: 9999,
       }}
     />
   );

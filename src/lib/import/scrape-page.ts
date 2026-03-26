@@ -133,9 +133,12 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           const rect = element.getBoundingClientRect();
           const computed = window.getComputedStyle(element);
 
+          // Skip truly invisible elements (0×0 with no content), but keep display:none
+          // and visibility:hidden so the tree is complete
           if (
             !['html', 'body', 'svg'].includes(tagName) &&
-            (computed.display === 'none' || (rect.width === 0 && rect.height === 0))
+            computed.display !== 'none' && computed.visibility !== 'hidden' &&
+            rect.width === 0 && rect.height === 0
           ) return null;
 
           // Extract computed styles

@@ -116,11 +116,6 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     (style as any)[camelKey] = value;
   }
 
-  // Never hide elements in the editor — override display:none to block
-  if (style.display === 'none') {
-    style.display = 'block';
-  }
-
   // Preserve positioning that works within parent context (absolute, relative)
   // Only strip fixed/sticky which would break canvas containment
   const pos = style.position as string | undefined;

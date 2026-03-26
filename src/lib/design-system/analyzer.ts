@@ -33,23 +33,12 @@ export function analyzeDesignSystem(rootNode: PenmaNode): DesignSystem {
 
 // ── Color extraction ────────────────────────────────────────
 
+import { parseCssColor } from '@/lib/styles/color-parser';
+
 function normalizeColor(raw: string): string | null {
-  if (!raw || raw === 'transparent' || raw === 'initial' || raw === 'inherit' || raw === 'none') return null;
-
-  // rgba/rgb → hex
-  const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (rgbMatch) {
-    const [, r, g, b] = rgbMatch;
-    const hex = '#' + [r, g, b].map((c) => parseInt(c).toString(16).padStart(2, '0')).join('');
-    // Skip near-transparent
-    const alphaMatch = raw.match(/,\s*([\d.]+)\s*\)/);
-    if (alphaMatch && parseFloat(alphaMatch[1]) < 0.05) return null;
-    return hex.toLowerCase();
-  }
-
-  if (raw.startsWith('#')) return raw.toLowerCase().slice(0, 7);
-
-  return null;
+  const parsed = parseCssColor(raw);
+  if (!parsed || parsed.opacity < 5) return null;
+  return parsed.hex.toLowerCase();
 }
 
 function extractColors(nodes: PenmaNode[]): ColorToken[] {

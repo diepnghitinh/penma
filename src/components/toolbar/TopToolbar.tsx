@@ -374,7 +374,7 @@ export const TopToolbar: React.FC = () => {
             pushHistory('New frame');
             addDocument({
               id: uuid(),
-              sourceUrl: 'local://canvas',
+              sourceUrl: 'local://frame',
               importedAt: new Date().toISOString(),
               viewport: { width: 1440, height: 900 },
               rootNode: {

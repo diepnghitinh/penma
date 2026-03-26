@@ -101,25 +101,7 @@ const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) 
   );
 };
 
-function parseColorToHex(color: string): string {
-  if (color.startsWith('#')) return color.slice(0, 7);
-  const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (rgbaMatch) {
-    const r = parseInt(rgbaMatch[1]).toString(16).padStart(2, '0');
-    const g = parseInt(rgbaMatch[2]).toString(16).padStart(2, '0');
-    const b = parseInt(rgbaMatch[3]).toString(16).padStart(2, '0');
-    return `#${r}${g}${b}`;
-  }
-  // color(srgb r g b)
-  const srgbMatch = color.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
-  if (srgbMatch) {
-    const r = Math.round(parseFloat(srgbMatch[1]) * 255).toString(16).padStart(2, '0');
-    const g = Math.round(parseFloat(srgbMatch[2]) * 255).toString(16).padStart(2, '0');
-    const b = Math.round(parseFloat(srgbMatch[3]) * 255).toString(16).padStart(2, '0');
-    return `#${r}${g}${b}`;
-  }
-  return '#000000';
-}
+import { parseColorToHex } from '@/lib/styles/color-parser';
 
 export const StylePanel: React.FC = () => {
   const documents = useEditorStore((s) => s.documents);

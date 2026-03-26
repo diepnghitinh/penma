@@ -102,6 +102,10 @@ export const SelectionOverlay: React.FC = () => {
     } else setHoverBox(null);
   }, [selectedIds, hoveredId]);
 
+  // Keep a stable ref so effects can call measureBoxes without depending on it
+  const measureBoxesRef = useRef(measureBoxes);
+  measureBoxesRef.current = measureBoxes;
+
   // Measure on selection/hover change
   useEffect(() => {
     rafRef.current = requestAnimationFrame(measureBoxes);
@@ -232,7 +236,7 @@ export const SelectionOverlay: React.FC = () => {
         }
       }
 
-      // Live-sync bounds to store (throttled via RAF) so sidebar updates in real-time
+      // Live-sync bounds + selection boxes (throttled via RAF)
       cancelAnimationFrame(boundsSyncRaf);
       boundsSyncRaf = requestAnimationFrame(() => {
         for (const orig of dragNodeOriginal.current) {
@@ -241,6 +245,7 @@ export const SelectionOverlay: React.FC = () => {
             y: Math.round(orig.top + dy),
           });
         }
+        measureBoxesRef.current();
       });
     };
 
@@ -266,6 +271,7 @@ export const SelectionOverlay: React.FC = () => {
           });
         }
       }
+      measureBoxesRef.current();
     };
 
     window.addEventListener('pointermove', handleMove);
@@ -402,6 +408,7 @@ export const SelectionOverlay: React.FC = () => {
         if (dir.includes('w')) boundsUpdate.x = Math.round(syncLeft);
         if (dir.includes('n')) boundsUpdate.y = Math.round(syncTop);
         updateNodeBounds(resizeStart.current.nodeId, boundsUpdate);
+        measureBoxesRef.current();
       });
     };
 
@@ -447,6 +454,7 @@ export const SelectionOverlay: React.FC = () => {
 
       updateNodeStyles(nodeId, styleUpdate);
       updateNodeBounds(nodeId, boundsUpdate);
+      measureBoxesRef.current();
     };
 
     window.addEventListener('pointermove', handleMove);
