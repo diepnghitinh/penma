@@ -18,8 +18,8 @@ import { ShapeCreator } from './ShapeCreator';
 
 export const Canvas: React.FC = () => {
   const camera = useEditorStore((s) => s.camera);
-  const pan = useEditorStore((s) => s.pan);
   const editEnabled = useEditorStore((s) => s.editEnabled);
+  const pan = useEditorStore((s) => s.pan);
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
@@ -33,8 +33,26 @@ export const Canvas: React.FC = () => {
   const clearSelection = useEditorStore((s) => s.clearSelection);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
   const lastPanPos = useRef({ x: 0, y: 0 });
+
+  // Apply camera transform via ref — avoids re-rendering the entire document tree on pan/zoom
+  useEffect(() => {
+    let prevCamera = useEditorStore.getState().camera;
+    if (viewportRef.current) {
+      viewportRef.current.style.transform = getCanvasTransform(prevCamera);
+    }
+    const unsub = useEditorStore.subscribe((state) => {
+      if (state.camera !== prevCamera) {
+        prevCamera = state.camera;
+        if (viewportRef.current) {
+          viewportRef.current.style.transform = getCanvasTransform(state.camera);
+        }
+      }
+    });
+    return unsub;
+  }, []);
 
   // Document frame drag state
   const dragDocRef = useRef<{ docId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -180,10 +198,11 @@ export const Canvas: React.FC = () => {
         style={{ background: '#F5F7FA' }}
       />
 
-      {/* Viewport transform */}
+      {/* Viewport transform — updated via ref subscription, not React state */}
       <div
+        ref={viewportRef}
         className="absolute origin-top-left"
-        style={{ transform: getCanvasTransform(camera), willChange: 'transform' }}
+        style={{ willChange: 'transform' }}
       >
         {/* Canvas-level shapes (outside any frame) */}
         {documents.filter((d) => d.sourceUrl === 'local://canvas').map((doc) => (

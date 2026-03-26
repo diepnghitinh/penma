@@ -22,51 +22,42 @@ const VOID_ELEMENTS = new Set([
 const SKIP_TAGS = new Set(['style', 'script', 'noscript', 'head']);
 
 const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 0, parentAutoLayout }) => {
-  const select = useEditorStore((s) => s.select);
-  const setHovered = useEditorStore((s) => s.setHovered);
-  const activeTool = useEditorStore((s) => s.activeTool);
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const editEnabled = useEditorStore((s) => s.editEnabled);
-  const editSettings = useEditorStore((s) => s.editSettings);
-  const updateNodeText = useEditorStore((s) => s.updateNodeText);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-
+  // Read store state lazily in handlers via getState() to avoid re-render subscriptions
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      const { activeTool, select } = useEditorStore.getState();
       if (activeTool !== 'select') return;
       e.stopPropagation();
       select(node.id, e.shiftKey);
     },
-    [activeTool, node.id, select]
+    [node.id]
   );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      // Select the element if not already selected
+      const { selectedIds, select } = useEditorStore.getState();
       if (!selectedIds.includes(node.id)) {
         select(node.id, false);
       }
-      // Dispatch custom event for the ContextMenu component
       window.dispatchEvent(new CustomEvent('penma:contextmenu', {
         detail: { x: e.clientX, y: e.clientY, nodeId: node.id },
       }));
     },
-    [node.id, selectedIds, select]
+    [node.id]
   );
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
+      const { editEnabled, editSettings, pushHistory, updateNodeText } = useEditorStore.getState();
       if (!editEnabled || !editSettings.textEditable) return;
-      // Allow editing if node has textContent, or is a leaf with visible text
       const hasEditableText = node.textContent || (e.currentTarget as HTMLElement).textContent?.trim();
       if (!hasEditableText) return;
       e.stopPropagation();
       const el = e.currentTarget as HTMLElement;
       el.contentEditable = 'true';
       el.focus();
-      // Select all text
       const range = document.createRange();
       range.selectNodeContents(el);
       const sel = window.getSelection();
@@ -97,18 +88,19 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       el.addEventListener('blur', handleBlur);
       el.addEventListener('keydown', handleKey);
     },
-    [editEnabled, editSettings.textEditable, node.textContent, node.id, pushHistory, updateNodeText]
+    [node.textContent, node.id]
   );
 
   const handleMouseEnter = useCallback(() => {
+    const { activeTool, setHovered } = useEditorStore.getState();
     if (activeTool === 'select') {
       setHovered(node.id);
     }
-  }, [activeTool, node.id, setHovered]);
+  }, [node.id]);
 
   const handleMouseLeave = useCallback(() => {
-    setHovered(null);
-  }, [setHovered]);
+    useEditorStore.getState().setHovered(null);
+  }, []);
 
   if (!node.visible || SKIP_TAGS.has(node.tagName)) return null;
 
@@ -345,7 +337,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     }
   }
 
-  const isSelected = selectedIds.includes(node.id);
+  const isSelected = useEditorStore.getState().selectedIds.includes(node.id);
 
   // Build safe attributes (filter out event handlers, map to React camelCase)
   const HTML_TO_REACT: Record<string, string> = {
@@ -389,7 +381,6 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
           ...style,
           maxWidth: '100%',
           outline: isSelected ? '2px solid #2563eb' : undefined,
-          cursor: activeTool === 'select' ? 'default' : undefined,
         }}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}

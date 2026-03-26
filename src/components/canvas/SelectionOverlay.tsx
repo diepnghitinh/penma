@@ -71,44 +71,53 @@ export const SelectionOverlay: React.FC = () => {
   /** Initial screen rect of resizing element */
   const resizeInitScreenRef = useRef<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Read DOM rects without causing re-renders on every frame
-  useEffect(() => {
-    const update = () => {
-      // Selection boxes
-      const boxes: SelectionBox[] = [];
-      for (const id of selectedIds) {
-        const el = document.querySelector(`[data-penma-id="${id}"]`);
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          boxes.push({ id, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
-        }
+  // Read DOM rects — triggered by selection/hover/camera changes, not continuous RAF
+  const measureBoxes = useCallback(() => {
+    const boxes: SelectionBox[] = [];
+    for (const id of selectedIds) {
+      const el = document.querySelector(`[data-penma-id="${id}"]`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        boxes.push({ id, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
       }
-      setSelectionBoxes((prev) => {
-        if (prev.length !== boxes.length) return boxes;
-        const changed = boxes.some((b, i) => {
-          const p = prev[i];
-          return !p || p.id !== b.id || Math.abs(p.rect.x - b.rect.x) > 0.5 || Math.abs(p.rect.y - b.rect.y) > 0.5 || Math.abs(p.rect.width - b.rect.width) > 0.5 || Math.abs(p.rect.height - b.rect.height) > 0.5;
-        });
-        return changed ? boxes : prev;
+    }
+    setSelectionBoxes((prev) => {
+      if (prev.length !== boxes.length) return boxes;
+      const changed = boxes.some((b, i) => {
+        const p = prev[i];
+        return !p || p.id !== b.id || Math.abs(p.rect.x - b.rect.x) > 0.5 || Math.abs(p.rect.y - b.rect.y) > 0.5 || Math.abs(p.rect.width - b.rect.width) > 0.5 || Math.abs(p.rect.height - b.rect.height) > 0.5;
       });
+      return changed ? boxes : prev;
+    });
 
-      // Hover box
-      if (hoveredId && !selectedIds.includes(hoveredId)) {
-        const el = document.querySelector(`[data-penma-id="${hoveredId}"]`);
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          setHoverBox((prev) => {
-            if (prev && Math.abs(prev.x - rect.x) < 0.5 && Math.abs(prev.y - rect.y) < 0.5 && Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) return prev;
-            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-          });
-        } else setHoverBox(null);
+    if (hoveredId && !selectedIds.includes(hoveredId)) {
+      const el = document.querySelector(`[data-penma-id="${hoveredId}"]`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setHoverBox((prev) => {
+          if (prev && Math.abs(prev.x - rect.x) < 0.5 && Math.abs(prev.y - rect.y) < 0.5 && Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) return prev;
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        });
       } else setHoverBox(null);
-
-      rafRef.current = requestAnimationFrame(update);
-    };
-    rafRef.current = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(rafRef.current);
+    } else setHoverBox(null);
   }, [selectedIds, hoveredId]);
+
+  // Measure on selection/hover change
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(measureBoxes);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [measureBoxes]);
+
+  // Re-measure when camera changes (pan/zoom moves DOM elements)
+  useEffect(() => {
+    const unsub = useEditorStore.subscribe((state) => {
+      if (state.camera) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(measureBoxes);
+      }
+    });
+    return unsub;
+  }, [measureBoxes]);
 
   // ── Move handlers ──
   const handleMoveStart = useCallback((e: React.PointerEvent) => {
