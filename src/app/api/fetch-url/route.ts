@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   // ── Non-streaming import ────────────────────────────────────
 
   try {
-    const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
+    const { tree: serializedTree, fonts: extractedFonts, cssRules, classCss } = await scrapePage({
       url: parsedUrl,
       viewportWidth,
       viewportHeight,
@@ -50,10 +50,11 @@ export async function POST(request: NextRequest) {
       parsedUrl.toString(),
       { width: viewportWidth, height: viewportHeight },
       cssRules,
+      classCss,
     );
 
-    // Store CSS rules in MongoDB
-    storeImportedCss(parsedUrl.toString(), cssRules).catch(() => {});
+    // Store CSS rules and class CSS map in MongoDB
+    storeImportedCss(parsedUrl.toString(), cssRules, classCss).catch(() => {});
 
     // Download and store fonts in MongoDB
     const storedFonts = await downloadAndStoreFonts(extractedFonts, parsedUrl.toString());
@@ -93,7 +94,7 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
       }
 
       try {
-        const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
+        const { tree: serializedTree, fonts: extractedFonts, cssRules, classCss } = await scrapePage({
           url: parsedUrl,
           viewportWidth,
           viewportHeight,
@@ -108,10 +109,11 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
           parsedUrl.toString(),
           { width: viewportWidth, height: viewportHeight },
           cssRules,
+          classCss,
         );
 
-        // Store CSS rules in MongoDB
-        storeImportedCss(parsedUrl.toString(), cssRules).catch(() => {});
+        // Store CSS rules and class CSS map in MongoDB
+        storeImportedCss(parsedUrl.toString(), cssRules, classCss).catch(() => {});
 
         // Download and store fonts in MongoDB
         if (extractedFonts.length > 0) {

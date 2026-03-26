@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     rules: doc.rules,
     ruleCount: doc.ruleCount,
+    classCss: doc.classCss || {},
+    classCount: Object.keys(doc.classCss || {}).length,
     sourceUrl: doc.sourceUrl,
     updatedAt: doc.updatedAt,
   });

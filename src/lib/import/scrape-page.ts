@@ -51,10 +51,14 @@ export interface ExtractedCssRule {
   source: string;
 }
 
+/** Map of CSS class name → merged CSS declarations from all matching rules */
+export type ClassCssMap = Record<string, Record<string, string>>;
+
 export interface ScrapeResult {
   tree: SerializedNode;
   fonts: ExtractedFontFace[];
   cssRules: ExtractedCssRule[];
+  classCss: ClassCssMap;
 }
 
 export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
@@ -391,7 +395,42 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
       assignToTree(serializedTree as SerializedNode);
     }
 
-    return { tree: serializedTree as SerializedNode, fonts: extractedFonts, cssRules: extractedCssRules };
+    // ── Build class CSS map: className → merged declarations ───
+    progress(83, 'Building class CSS map...');
+    const classCss: ClassCssMap = {};
+
+    // Collect all unique class names from the serialized tree
+    function collectClasses(node: SerializedNode, classes: Set<string>) {
+      if (node.cssClasses) {
+        for (const c of node.cssClasses) classes.add(c);
+      }
+      for (const child of node.children) {
+        collectClasses(child, classes);
+      }
+    }
+    const allClasses = new Set<string>();
+    collectClasses(serializedTree as SerializedNode, allClasses);
+
+    // For each class, find CSS rules whose selector targets it and merge declarations
+    if (allClasses.size > 0 && extractedCssRules.length > 0) {
+      for (const className of allClasses) {
+        // Match rules whose selector contains .className (as a whole word)
+        const pattern = new RegExp(`\\.${className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s,:+~>\\[{]|$)`);
+        const merged: Record<string, string> = {};
+        for (const rule of extractedCssRules) {
+          if (pattern.test(rule.selector)) {
+            Object.assign(merged, rule.declarations);
+          }
+        }
+        if (Object.keys(merged).length > 0) {
+          classCss[className] = merged;
+        }
+      }
+    }
+
+    progress(84, `Mapped CSS for ${Object.keys(classCss).length} classes`);
+
+    return { tree: serializedTree as SerializedNode, fonts: extractedFonts, cssRules: extractedCssRules, classCss };
   } finally {
     await browser.close();
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Paintbrush } from 'lucide-react';
 import { sidebarConfig } from '@/configs/editor';
 import { useEditorStore } from '@/store/editor-store';
@@ -585,6 +585,25 @@ const NodeCssInfo: React.FC<{ node: PenmaNode; document: PenmaDocument }> = ({ n
 
 const OriginalCssPanel: React.FC<{ node: PenmaNode; document: PenmaDocument }> = ({ node, document: doc }) => {
   const [expanded, setExpanded] = useState(false);
+  const [activeClassTab, setActiveClassTab] = useState<string | null>(null);
+
+  // Always fetch classCss from importedcsses collection — the source of truth
+  const [classCss, setClassCss] = useState<Record<string, Record<string, string>> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!doc.sourceUrl) return;
+    setLoading(true);
+    fetch(`/api/admin/imported-css?sourceUrl=${encodeURIComponent(doc.sourceUrl)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.classCss && Object.keys(data.classCss).length > 0) {
+          setClassCss(data.classCss);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [doc.sourceUrl]);
 
   const matchedRules: CssRuleEntry[] = React.useMemo(() => {
     if (!doc.cssRules || !node.matchedCssRules) return [];
@@ -594,9 +613,19 @@ const OriginalCssPanel: React.FC<{ node: PenmaNode; document: PenmaDocument }> =
   }, [doc.cssRules, node.matchedCssRules]);
 
   const classes = node.cssClasses || [];
-  const hasData = matchedRules.length > 0 || classes.length > 0;
 
-  if (!hasData) return null;
+  // Get classCss entries for this node's classes
+  const nodeClassCss = React.useMemo(() => {
+    if (!classCss || classes.length === 0) return [];
+    return classes
+      .filter((cls) => classCss[cls] && Object.keys(classCss[cls]).length > 0)
+      .map((cls) => ({ className: cls, declarations: classCss[cls] }));
+  }, [classCss, classes]);
+
+  const hasData = matchedRules.length > 0 || classes.length > 0 || nodeClassCss.length > 0;
+
+  // Compute badge count
+  const badgeCount = nodeClassCss.length > 0 ? nodeClassCss.length : matchedRules.length;
 
   return (
     <div style={{ borderBottom: '1px solid var(--penma-border)' }}>
@@ -608,47 +637,146 @@ const OriginalCssPanel: React.FC<{ node: PenmaNode; document: PenmaDocument }> =
           <span style={mutedStyle}>{expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
           <span className="text-[12px] font-semibold" style={{ color: 'var(--penma-text)' }}>Original CSS</span>
         </button>
-        {matchedRules.length > 0 && (
+        {badgeCount > 0 && (
           <span className="text-[10px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
-            {matchedRules.length} rule{matchedRules.length !== 1 ? 's' : ''}
+            {nodeClassCss.length > 0
+              ? `${nodeClassCss.length} class${nodeClassCss.length !== 1 ? 'es' : ''}`
+              : `${matchedRules.length} rule${matchedRules.length !== 1 ? 's' : ''}`
+            }
           </span>
         )}
       </div>
 
       {expanded && (
         <div className="px-4 pb-3">
-          {/* CSS classes */}
+          {/* CSS classes as clickable pills */}
           {classes.length > 0 && (
             <div className="mb-2">
               <span className="block text-[10px] font-medium mb-1" style={{ color: 'var(--penma-text-muted)' }}>Classes</span>
               <div className="flex flex-wrap gap-1">
-                {classes.map((cls, i) => (
-                  <span
-                    key={i}
-                    className="rounded px-1.5 py-0.5 text-[10px] font-mono cursor-default"
-                    style={{ background: 'var(--penma-hover-bg)', color: 'var(--penma-primary)' }}
-                  >
-                    .{cls}
-                  </span>
+                {classes.map((cls, i) => {
+                  const hasClassCss = classCss?.[cls] && Object.keys(classCss[cls]).length > 0;
+                  const isActive = activeClassTab === cls;
+                  return (
+                    <button
+                      key={i}
+                      className="rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer"
+                      style={{
+                        background: isActive ? 'var(--penma-primary)' : hasClassCss ? '#EFF6FF' : 'var(--penma-hover-bg)',
+                        color: isActive ? '#fff' : hasClassCss ? 'var(--penma-primary)' : 'var(--penma-text-muted)',
+                        transition: 'var(--transition-fast)',
+                      }}
+                      onClick={() => setActiveClassTab(isActive ? null : cls)}
+                      title={hasClassCss ? `Click to view CSS for .${cls}` : `No CSS stored for .${cls}`}
+                    >
+                      .{cls}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Active class CSS declarations */}
+          {activeClassTab && classCss?.[activeClassTab] && (
+            <div className="mb-2 rounded-md overflow-hidden" style={{ background: 'var(--penma-hover-bg)' }}>
+              <div className="flex items-center gap-1.5 px-2 py-1.5" style={{ borderBottom: '1px solid var(--penma-border)' }}>
+                <span className="text-[10px] font-mono font-semibold" style={{ color: 'var(--penma-primary)' }}>.{activeClassTab}</span>
+                <span className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+                  {Object.keys(classCss[activeClassTab]).length} props
+                </span>
+              </div>
+              <div className="px-2 py-1.5 space-y-0.5 max-h-48 overflow-auto">
+                {Object.entries(classCss[activeClassTab]).map(([prop, val]) => (
+                  <div key={prop} className="flex gap-1 text-[10px] font-mono leading-tight">
+                    <span className="shrink-0" style={{ color: 'var(--penma-primary)' }}>{prop}</span>
+                    <span style={{ color: 'var(--penma-text-muted)' }}>:</span>
+                    <span className="break-all" style={{ color: 'var(--penma-text-secondary)' }}>{val}</span>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Class CSS summary (when no class is active) */}
+          {!activeClassTab && nodeClassCss.length > 0 && (
+            <div className="space-y-1.5 mb-2">
+              {nodeClassCss.map(({ className, declarations }) => (
+                <ClassCssBlock key={className} className={className} declarations={declarations} />
+              ))}
+            </div>
+          )}
+
           {/* Matched CSS rules */}
-          {matchedRules.length > 0 && (
+          {matchedRules.length > 0 && !activeClassTab && (
             <div className="space-y-1.5">
+              <span className="block text-[10px] font-medium mb-1" style={{ color: 'var(--penma-text-muted)' }}>Matched Rules</span>
               {matchedRules.map((rule, i) => (
                 <CssRuleBlock key={i} rule={rule} />
               ))}
             </div>
           )}
 
-          {matchedRules.length === 0 && classes.length > 0 && (
+          {loading && (
+            <p className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>
+              Loading CSS from database...
+            </p>
+          )}
+
+          {!loading && !hasData && (
+            <p className="text-[10px]" style={{ color: 'var(--penma-text-muted)' }}>
+              No CSS class data for this element. Re-import the page to capture original stylesheet rules.
+            </p>
+          )}
+
+          {matchedRules.length === 0 && nodeClassCss.length === 0 && classes.length > 0 && (
             <p className="text-[10px] mt-1" style={{ color: 'var(--penma-text-muted)' }}>
               CSS rules not captured — re-import to store stylesheet data
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ClassCssBlock: React.FC<{ className: string; declarations: Record<string, string> }> = ({ className, declarations }) => {
+  const [open, setOpen] = useState(false);
+  const entries = Object.entries(declarations);
+  const preview = entries.slice(0, 3);
+  const hasMore = entries.length > 3;
+
+  return (
+    <div className="rounded-md" style={{ background: 'var(--penma-hover-bg)' }}>
+      <button
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 cursor-pointer text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <span style={{ color: 'var(--penma-text-muted)' }}>{open ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+        <span className="text-[10px] font-mono font-medium flex-1 truncate" style={{ color: 'var(--penma-primary)' }}>.{className}</span>
+        <span className="text-[9px] font-mono shrink-0" style={{ color: 'var(--penma-text-muted)' }}>{entries.length} props</span>
+      </button>
+
+      {!open && (
+        <div className="px-2 pb-1.5 flex flex-wrap gap-x-3">
+          {preview.map(([prop, val]) => (
+            <span key={prop} className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>
+              <span style={{ color: 'var(--penma-primary)' }}>{prop}</span>: {val.length > 20 ? val.slice(0, 20) + '...' : val}
+            </span>
+          ))}
+          {hasMore && <span className="text-[9px] font-mono" style={{ color: 'var(--penma-text-muted)' }}>+{entries.length - 3}</span>}
+        </div>
+      )}
+
+      {open && (
+        <div className="px-2 pb-2 space-y-0.5">
+          {entries.map(([prop, val]) => (
+            <div key={prop} className="flex gap-1 text-[10px] font-mono leading-tight">
+              <span className="shrink-0" style={{ color: 'var(--penma-primary)' }}>{prop}</span>
+              <span style={{ color: 'var(--penma-text-muted)' }}>:</span>
+              <span className="break-all" style={{ color: 'var(--penma-text-secondary)' }}>{val}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>

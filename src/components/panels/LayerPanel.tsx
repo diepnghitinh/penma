@@ -140,6 +140,15 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
     }
   }, [isSelected]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    select(node.id, false);
+    window.dispatchEvent(new CustomEvent('penma:contextmenu', {
+      detail: { x: e.clientX, y: e.clientY, nodeId: node.id },
+    }));
+  }, [node.id, select]);
+
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
@@ -188,6 +197,7 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
         onClick={handleClick}
         onPointerDown={handlePointerDown}
         onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}
+        onContextMenu={handleContextMenu}
       >
         {/* Expand toggle */}
         <button className={`flex h-5 w-5 items-center justify-center shrink-0 ${hasChildren ? 'visible' : 'invisible'}`} onClick={handleToggle}>
@@ -583,6 +593,14 @@ export const LayerPanel: React.FC = () => {
                   background: isFrameSelected ? undefined : (isActive ? 'var(--penma-primary-light)' : 'transparent'),
                   color: isFrameSelected ? undefined : (isActive ? 'var(--penma-primary)' : 'var(--penma-text-secondary)'),
                   fontWeight: 600, fontFamily: 'var(--font-heading)',
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  select(doc.rootNode.id, false);
+                  window.dispatchEvent(new CustomEvent('penma:contextmenu', {
+                    detail: { x: e.clientX, y: e.clientY, nodeId: doc.rootNode.id },
+                  }));
                 }}
                 onClick={(e) => {
                   setActiveDocument(doc.id);

@@ -7,6 +7,8 @@ export interface PenmaDocument {
   assets: Record<string, AssetReference>;
   /** Original CSS rules extracted from the page's stylesheets */
   cssRules?: CssRuleEntry[];
+  /** Map of CSS class name → merged declarations from matching rules */
+  classCss?: Record<string, Record<string, string>>;
   /** Position of this frame on the canvas (top-left corner in document space) */
   canvasX: number;
   canvasY: number;

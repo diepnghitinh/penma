@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
             const filePath = join(tempDir, entry.path);
             const fileUrl = new URL(`file://${filePath}`);
 
-            const { tree: serializedTree, fonts: extractedFonts, cssRules } = await scrapePage({
+            const { tree: serializedTree, fonts: extractedFonts, cssRules, classCss } = await scrapePage({
               url: fileUrl,
               viewportWidth,
               viewportHeight,
@@ -133,10 +133,11 @@ export async function POST(request: NextRequest) {
               `zip://${entry.path}`,
               { width: viewportWidth, height: viewportHeight },
               cssRules,
+              classCss,
             );
 
-            // Store CSS rules in MongoDB
-            storeImportedCss(`zip://${entry.path}`, cssRules).catch(() => {});
+            // Store CSS rules and class CSS map in MongoDB
+            storeImportedCss(`zip://${entry.path}`, cssRules, classCss).catch(() => {});
 
             // Handle fonts
             if (extractedFonts.length > 0) {

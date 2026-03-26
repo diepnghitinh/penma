@@ -11,6 +11,8 @@ export interface IImportedCss extends Document {
   }>;
   /** Total number of rules */
   ruleCount: number;
+  /** Map of CSS class name → merged declarations from matching rules */
+  classCss: Record<string, Record<string, string>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +22,7 @@ const ImportedCssSchema = new Schema(
     sourceUrl: { type: String, required: true, index: true },
     rules: { type: Schema.Types.Mixed, default: [] },
     ruleCount: { type: Number, default: 0 },
+    classCss: { type: Schema.Types.Mixed, default: {} },
   },
   { timestamps: true, strict: false },
 );

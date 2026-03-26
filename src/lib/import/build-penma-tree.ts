@@ -228,6 +228,7 @@ export function buildPenmaDocument(
   sourceUrl: string,
   viewport: { width: number; height: number },
   cssRules?: Array<{ selector: string; declarations: Record<string, string>; source: string }>,
+  classCss?: Record<string, Record<string, string>>,
 ): PenmaDocument {
   const rootNode = assignIds(serializedTree);
 
@@ -239,6 +240,7 @@ export function buildPenmaDocument(
     rootNode,
     assets: {},
     cssRules: cssRules && cssRules.length > 0 ? cssRules : undefined,
+    classCss: classCss && Object.keys(classCss).length > 0 ? classCss : undefined,
     canvasX: 0,
     canvasY: 0,
   };

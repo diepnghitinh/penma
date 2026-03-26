@@ -16,7 +16,7 @@ export function saveProjectToLocal(projectId: string, data: LocalSave): void {
   try {
     // Strip large CSS data to avoid localStorage quota issues
     const json = JSON.stringify(data, (key, value) => {
-      if (key === 'cssRules' || key === 'matchedCssRules' || key === 'cssClasses') return undefined;
+      if (key === 'cssRules' || key === 'classCss' || key === 'matchedCssRules' || key === 'cssClasses') return undefined;
       return value;
     });
     localStorage.setItem(`${STORAGE_PREFIX}${projectId}`, json);
