@@ -175,7 +175,9 @@ function assignIds(
     id: uuid(),
     tagName: node.tagName,
     attributes: node.attributes,
-    children: node.children.map((child) => assignIds(child, autoLayout)),
+    children: node.children
+      .filter((child) => !(child.tagName === 'br' && autoLayout?.direction === 'vertical'))
+      .map((child) => assignIds(child, autoLayout)),
     textContent: node.textContent,
     rawHtml: node.rawHtml,
     styles: { computed: node.styles, overrides: {} },
