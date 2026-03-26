@@ -12,7 +12,20 @@ import {
 } from 'lucide-react';
 import { useEditorStore } from '@/store/editor-store';
 import { getAncestorIds, findParentNode, findNodeById, flattenTree } from '@/lib/utils/tree-utils';
+import { scrollCameraToElement } from '@/lib/canvas/coordinates';
 import type { PenmaNode } from '@/types/document';
+
+/** Pan the viewport camera to center an element on the canvas */
+function panCameraToNode(nodeId: string) {
+  const canvas = document.querySelector('[data-penma-canvas]');
+  if (!canvas) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  const { camera } = useEditorStore.getState();
+  const newCamera = scrollCameraToElement(nodeId, camera, canvasRect);
+  if (newCamera) {
+    useEditorStore.setState({ camera: newCamera });
+  }
+}
 
 const TAG_ICONS: Record<string, string> = {
   div: 'D', span: 'S', p: 'P',
@@ -146,21 +159,18 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
     e.stopPropagation();
     const { lastSelectedId, select, selectMultiple } = useEditorStore.getState();
     if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
-      // Range selection: select all items between anchor and clicked
       const anchorIdx = visibleIds.indexOf(lastSelectedId);
       const clickIdx = visibleIds.indexOf(node.id);
       if (anchorIdx !== -1 && clickIdx !== -1) {
         const start = Math.min(anchorIdx, clickIdx);
         const end = Math.max(anchorIdx, clickIdx);
         selectMultiple(visibleIds.slice(start, end + 1));
-        const el = document.querySelector(`[data-penma-id="${node.id}"]`);
-        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        panCameraToNode(node.id);
         return;
       }
     }
     select(node.id, false);
-    const el = document.querySelector(`[data-penma-id="${node.id}"]`);
-    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    panCameraToNode(node.id);
   }, [node.id, visibleIds]);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {

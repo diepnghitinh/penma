@@ -162,6 +162,7 @@ export const Canvas: React.FC = () => {
   return (
     <div
       ref={canvasRef}
+      data-penma-canvas
       className="relative flex-1 overflow-hidden"
       style={{ cursor, background: 'var(--penma-bg)', touchAction: 'none', overscrollBehavior: 'none' }}
       onPointerDown={handlePointerDown}
