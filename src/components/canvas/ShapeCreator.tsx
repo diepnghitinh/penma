@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useEditorStore } from '@/store/editor-store';
 import { screenToDocument } from '@/lib/canvas/coordinates';
+import { useCanvasDrag } from './useCanvasDrag';
 import type { PenmaNode } from '@/types/document';
 import type { Tool } from '@/types/editor';
 
@@ -11,84 +12,34 @@ const SHAPE_TOOLS = new Set<Tool>([
   'rectangle', 'ellipse', 'line', 'arrow', 'star', 'polygon', 'frame', 'text',
 ]);
 
-/** Screen-space rectangle (clientX/clientY coords) */
-interface ScreenRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export const ShapeCreator: React.FC<{
   canvasRef: React.RefObject<HTMLDivElement | null>;
 }> = ({ canvasRef }) => {
   const activeTool = useEditorStore((s) => s.activeTool);
+  const { rect, startClient, isDragging, targetFrameId, reset } = useCanvasDrag(canvasRef, SHAPE_TOOLS);
 
-  // Preview rect in screen coords — single source of truth during drawing
-  const [preview, setPreview] = useState<ScreenRect | null>(null);
-  const isDrawing = useRef(false);
-  const startClient = useRef({ x: 0, y: 0 });
-  const targetFrameId = useRef<string | null>(null);
+  // Handle pointer up — convert screen rect to document space and create shape
+  useEffect(() => {
+    const handleUp = (e: PointerEvent) => {
+      if (!isDragging.current) return;
 
-  const isShapeTool = SHAPE_TOOLS.has(activeTool);
+      // Capture refs BEFORE reset clears them
+      const start = { ...startClient.current };
+      const frameId = targetFrameId.current;
 
-  // ── Pointer down — start drawing ──────────────────────────
-
-  const handlePointerDown = useCallback(
-    (e: PointerEvent) => {
-      if (!isShapeTool || e.button !== 0) return;
-      const target = e.target as HTMLElement;
-
-      const frameEl = target.closest('[data-penma-frame]') as HTMLElement | null;
-      const penmaEl = target.closest('[data-penma-id]') as HTMLElement | null;
-      if (penmaEl && !frameEl) return;
-
-      targetFrameId.current = frameEl?.getAttribute('data-penma-id') ?? null;
-      isDrawing.current = true;
-      startClient.current = { x: e.clientX, y: e.clientY };
-      setPreview(null);
-
-      if (frameEl) {
-        e.stopPropagation();
-        e.preventDefault();
-      }
-    },
-    [isShapeTool]
-  );
-
-  // ── Pointer move — update preview in screen coords ────────
-
-  const handlePointerMove = useCallback(
-    (e: PointerEvent) => {
-      if (!isDrawing.current) return;
-      const x = Math.min(startClient.current.x, e.clientX);
-      const y = Math.min(startClient.current.y, e.clientY);
-      const w = Math.abs(e.clientX - startClient.current.x);
-      const h = Math.abs(e.clientY - startClient.current.y);
-      if (w > 3 || h > 3) {
-        setPreview({ x, y, width: w, height: h });
-      }
-    },
-    []
-  );
-
-  // ── Pointer up — convert screen→document, create shape ────
-
-  const handlePointerUp = useCallback(
-    (e: PointerEvent) => {
-      if (!isDrawing.current) return;
-      isDrawing.current = false;
+      // Reset drag state
+      reset();
 
       const store = useEditorStore.getState();
       const cam = store.camera;
       const canvasRect = canvasRef.current?.getBoundingClientRect();
-      if (!canvasRect) { setPreview(null); return; }
+      if (!canvasRect) return;
 
-      // Convert start & end from screen (clientX/Y) → document space
+      // Convert screen → document space (single conversion at commit time)
       const toDoc = (cx: number, cy: number) =>
         screenToDocument({ x: cx - canvasRect.left, y: cy - canvasRect.top }, cam);
 
-      const startDoc = toDoc(startClient.current.x, startClient.current.y);
+      const startDoc = toDoc(start.x, start.y);
       const endDoc = toDoc(e.clientX, e.clientY);
 
       let w = Math.abs(endDoc.x - startDoc.x);
@@ -101,15 +52,13 @@ export const ShapeCreator: React.FC<{
       let finalX = Math.min(startDoc.x, endDoc.x);
       let finalY = Math.min(startDoc.y, endDoc.y);
 
-      const drawnInFrameId = targetFrameId.current;
-
-      if (drawnInFrameId) {
-        // Inside a frame: position relative to frame element
-        const frameEl = canvasRef.current?.querySelector(`[data-penma-id="${drawnInFrameId}"]`) as HTMLElement | null;
+      if (frameId) {
+        // Position relative to frame element
+        const frameEl = canvasRef.current?.querySelector(`[data-penma-id="${frameId}"]`) as HTMLElement | null;
         if (frameEl) {
           const frameRect = frameEl.getBoundingClientRect();
-          const sx = Math.min(startClient.current.x, e.clientX);
-          const sy = Math.min(startClient.current.y, e.clientY);
+          const sx = Math.min(start.x, e.clientX);
+          const sy = Math.min(start.y, e.clientY);
           finalX = (sx - frameRect.left) / cam.zoom;
           finalY = (sy - frameRect.top) / cam.zoom;
         }
@@ -118,59 +67,31 @@ export const ShapeCreator: React.FC<{
       const node = createShapeNode(activeTool, finalX, finalY, w, h);
       if (node) {
         store.pushHistory(`Create ${activeTool}`);
-        if (drawnInFrameId) {
-          store.addNodeToParent(drawnInFrameId, node);
+        if (frameId) {
+          store.addNodeToParent(frameId, node);
         } else {
           store.addCanvasNode(node);
         }
         store.select(node.id);
         store.setActiveTool('select');
       }
-      targetFrameId.current = null;
-      setPreview(null);
-    },
-    [activeTool, canvasRef]
-  );
-
-  // ── Register/unregister event listeners ───────────────────
-
-  useEffect(() => {
-    if (!isShapeTool) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.addEventListener('pointerdown', handlePointerDown, { capture: true });
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown, { capture: true });
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isShapeTool, canvasRef, handlePointerDown, handlePointerMove, handlePointerUp]);
 
-  // ── Cursor ────────────────────────────────────────────────
+    window.addEventListener('pointerup', handleUp);
+    return () => window.removeEventListener('pointerup', handleUp);
+  }, [activeTool, canvasRef, isDragging, startClient, targetFrameId, reset]);
 
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    canvasRef.current.style.cursor = isShapeTool ? 'crosshair' : '';
-    return () => { if (canvasRef.current) canvasRef.current.style.cursor = ''; };
-  }, [isShapeTool, canvasRef]);
+  if (!rect) return null;
 
-  // ── Preview overlay ───────────────────────────────────────
-  // Rendered in screen coords (position: fixed) — exactly where the user dragged.
-  // No coordinate conversion needed — what you see is what you get.
-
-  if (!preview) return null;
-
+  // Preview — screen-space rect directly from the shared drag hook
   return (
     <div
       className="fixed pointer-events-none"
       style={{
-        left: preview.x,
-        top: preview.y,
-        width: preview.width,
-        height: preview.height,
+        left: rect.x,
+        top: rect.y,
+        width: rect.width,
+        height: rect.height,
         border: '2px solid var(--penma-primary)',
         background: 'rgba(59, 130, 246, 0.06)',
         borderRadius: activeTool === 'ellipse' ? '50%' : activeTool === 'rectangle' || activeTool === 'frame' ? 2 : 0,

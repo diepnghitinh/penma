@@ -14,9 +14,7 @@ const CanvasShapesLayer = React.memo<{ documents: PenmaDocument[] }>(({ document
   return (
     <>
       {canvasDocs.map((doc) => (
-        <div key={doc.id} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }}>
-          <DocumentRenderer node={doc.rootNode} />
-        </div>
+        <DocumentRenderer key={doc.id} node={doc.rootNode} />
       ))}
     </>
   );

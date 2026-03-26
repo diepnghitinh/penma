@@ -12,6 +12,7 @@ import { MarqueeSelect } from './MarqueeSelect';
 import dynamic from 'next/dynamic';
 const BottomToolbar = dynamic(() => import('@/components/toolbar/BottomToolbar').then(m => m.BottomToolbar), { ssr: false });
 import { ShapeCreator } from './ShapeCreator';
+import { DebugOverlay } from './DebugOverlay';
 // CanvasContextMenu moved to EditorShell for z-index reliability
 
 export const Canvas: React.FC = () => {
@@ -206,6 +207,9 @@ export const Canvas: React.FC = () => {
 
       {/* Load imported web fonts */}
       <FontLoader />
+
+      {/* Debug viewport overlay (Ctrl+Shift+D or ?debug in URL) */}
+      <DebugOverlay canvasRef={canvasRef} />
 
       {/* Figma-style bottom toolbar */}
       <BottomToolbar />
