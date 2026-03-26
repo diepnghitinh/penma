@@ -128,6 +128,14 @@ export const StylePanel: React.FC = () => {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const activePageId = useEditorStore((s) => s.activePageId);
 
+  // Auto-select all text when focusing any input in the panel
+  const handlePanelFocus = useCallback((e: React.FocusEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'checkbox') {
+      (target as HTMLInputElement).select();
+    }
+  }, []);
+
   // Find the document containing the selected node (scoped to active page)
   const document = (() => {
     if (selectedIds.length === 0) return null;
@@ -143,7 +151,7 @@ export const StylePanel: React.FC = () => {
     // No selection — show document size controls + export
     if (documents.length > 0) {
       return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col" onFocus={handlePanelFocus}>
           <div className="flex h-9 items-center px-3" style={{ borderBottom: '1px solid var(--penma-border)' }}>
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--penma-text-muted)', fontFamily: 'var(--font-heading)' }}>
               Document
@@ -181,7 +189,7 @@ export const StylePanel: React.FC = () => {
   const accentColor = isComponent ? '#ec4899' : 'var(--penma-text-muted)';
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" onFocus={handlePanelFocus}>
       <div className="flex h-9 items-center px-3" style={{ borderBottom: `1px solid ${isComponent ? '#fce7f3' : 'var(--penma-border)'}` }}>
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accentColor, fontFamily: 'var(--font-heading)' }}>
           {isInstance ? 'Instance' : isComponent ? 'Component' : 'Design'}

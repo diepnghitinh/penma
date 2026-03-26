@@ -188,6 +188,7 @@ export const createProjectSlice: StateCreator<
 function stripCssForSave(documents: unknown[]): unknown[] {
   const json = JSON.stringify(documents, (key, value) => {
     if (key === 'cssRules') return undefined;
+    if (key === 'classCss') return undefined;
     if (key === 'matchedCssRules') return undefined;
     if (key === 'cssClasses') return undefined;
     return value;

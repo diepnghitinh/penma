@@ -128,7 +128,7 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           nodeCount++;
 
           const tagName = element.tagName.toLowerCase();
-          if (['script', 'noscript', 'link', 'meta', 'style'].includes(tagName)) return null;
+          if (['script', 'noscript', 'link', 'meta', 'style', 'br'].includes(tagName)) return null;
 
           const rect = element.getBoundingClientRect();
           const computed = window.getComputedStyle(element);

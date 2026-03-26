@@ -154,6 +154,6 @@ body {
 /* ── Selection color ──────────────────────────────────────── */
 
 ::selection {
-  background: var(--penma-primary-light);
-  color: var(--penma-text);
+  background: var(--penma-selection);
+  color: #FFFFFF;
 }

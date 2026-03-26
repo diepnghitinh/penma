@@ -34,6 +34,10 @@ export const editorConfig: EditorConfig = {
 
 export const sidebarConfig = {
   showNativeCss: false,
+  /** Selection highlight color for inputs (CSS color value) */
+  selectionColor: '#3B82F6',
+  /** Selection text color for inputs */
+  selectionTextColor: '#FFFFFF',
 };
 
 /**
