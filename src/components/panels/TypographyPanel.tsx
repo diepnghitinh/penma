@@ -136,9 +136,6 @@ const AlignBtn: React.FC<{
 // ─── Main Typography Panel ──────────────────────────────────
 
 export const TypographyPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-
   const get = useCallback(
     (prop: string) => getEffectiveStyle(node.styles, prop) ?? '',
     [node.styles],
@@ -146,10 +143,11 @@ export const TypographyPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
 
   const set = useCallback(
     (overrides: Record<string, string>) => {
+      const { pushHistory, updateNodeStyles } = useEditorStore.getState();
       pushHistory('Change typography');
       updateNodeStyles(node.id, overrides);
     },
-    [node.id, updateNodeStyles, pushHistory],
+    [node.id],
   );
 
   const fontFamily = get('font-family').split(',')[0].replace(/['"]/g, '').trim() || 'Inter';

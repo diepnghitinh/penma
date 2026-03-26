@@ -338,11 +338,8 @@ const ConstraintsSection: React.FC<{
 // ─── Main Position Panel ────────────────────────────────────
 
 export const PositionPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const updateDocumentPosition = useEditorStore((s) => s.updateDocumentPosition);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
   const documents = useEditorStore((s) => s.documents);
+  const { updateNodeBounds, updateNodeStyles, updateDocumentPosition, pushHistory } = useEditorStore.getState();
 
   const [showConstraints, setShowConstraints] = useState(false);
 

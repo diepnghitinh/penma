@@ -21,15 +21,13 @@ interface StyleSectionProps {
 }
 
 const StyleSection: React.FC<StyleSectionProps> = ({ title, properties, node }) => {
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-
   const handleStyleChange = useCallback(
     (property: string, value: string) => {
+      const { pushHistory, updateNodeStyles } = useEditorStore.getState();
       pushHistory(`Change ${property}`);
       updateNodeStyles(node.id, { [property]: value });
     },
-    [node.id, updateNodeStyles, pushHistory]
+    [node.id]
   );
 
   return (
@@ -458,16 +456,15 @@ function migrateFillsFromCss(node: PenmaNode): PenmaFill[] {
 }
 
 const FillPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const updateNodeFills = useEditorStore((s) => s.updateNodeFills);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
   const [expanded, setExpanded] = useState(true);
 
   const fills: PenmaFill[] = node.fills ?? migrateFillsFromCss(node);
 
   const update = useCallback((newFills: PenmaFill[]) => {
+    const { pushHistory, updateNodeFills } = useEditorStore.getState();
     pushHistory('Change fill');
     updateNodeFills(node.id, newFills);
-  }, [node.id, updateNodeFills, pushHistory]);
+  }, [node.id]);
 
   const addFill = useCallback(() => {
     update([...fills, { id: crypto.randomUUID(), color: '#000000', opacity: 100, visible: true }]);
@@ -844,8 +841,6 @@ const CssRuleBlock: React.FC<{ rule: CssRuleEntry }> = ({ rule }) => {
 const STROKE_POSITIONS = ['inside', 'center', 'outside'] as const;
 
 const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
   const [expanded, setExpanded] = useState(true);
   const [showIndividual, setShowIndividual] = useState(false);
 
@@ -866,9 +861,10 @@ const StrokePanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const isVisible = borderStyle !== 'none' && hasBorder;
 
   const applyBorder = useCallback((overrides: Record<string, string>) => {
+    const { pushHistory, updateNodeStyles } = useEditorStore.getState();
     pushHistory('Change stroke');
     updateNodeStyles(node.id, overrides);
-  }, [node.id, updateNodeStyles, pushHistory]);
+  }, [node.id]);
 
   const setColor = useCallback((hex: string) => {
     applyBorder({

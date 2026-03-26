@@ -355,16 +355,9 @@ const DimCell: React.FC<{
 // ─── Main Layout Panel ──────────────────────────────────────
 
 export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
-  const toggleAutoLayout = useEditorStore((s) => s.toggleAutoLayout);
-  const updateAutoLayout = useEditorStore((s) => s.updateAutoLayout);
-  const updateAutoLayoutPadding = useEditorStore((s) => s.updateAutoLayoutPadding);
-  const setUniformPadding = useEditorStore((s) => s.setUniformPadding);
-  const updateSizing = useEditorStore((s) => s.updateSizing);
-  const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
-  const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
-  const updateDocumentViewport = useEditorStore((s) => s.updateDocumentViewport);
+  // Only subscribe to data — actions are read via getState() to avoid unnecessary re-renders
   const documents = useEditorStore((s) => s.documents);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
+  const { toggleAutoLayout, updateAutoLayout, updateAutoLayoutPadding, setUniformPadding, updateSizing, updateNodeStyles, updateNodeBounds, updateDocumentViewport, pushHistory } = useEditorStore.getState();
 
   const [constrainProportions, setConstrainProportions] = useState(false);
 
