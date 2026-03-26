@@ -296,8 +296,14 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     style.justifyContent = halignMap[halign] || 'start';
   }
 
+  // ── Gradient text detection ──
+  // When background-clip: text is used with a background-image, it's a gradient text effect.
+  // Preserve the background properties and don't override with fills.
+  const bgClip = style.backgroundClip || style.WebkitBackgroundClip || '';
+  const isGradientText = bgClip === 'text' && style.backgroundImage && style.backgroundImage !== 'none';
+
   // ── Fills: apply as background (div) or color (span text) ──
-  if (node.fills && node.fills.length > 0) {
+  if (node.fills && node.fills.length > 0 && !isGradientText) {
     const visibleFills = node.fills.filter((f) => f.visible);
     if (isTextElement) {
       // Text elements: fills apply as text color (topmost visible fill wins)

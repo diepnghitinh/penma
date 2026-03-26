@@ -22,6 +22,7 @@ export const TEXT_STYLE_KEYS = new Set([
   'font-family', 'font-size', 'font-weight', 'line-height',
   'letter-spacing', 'text-align', 'text-valign', 'text-decoration', 'color',
   'text-transform', 'white-space', 'word-break', 'word-spacing',
+  'background-image', 'background-clip', '-webkit-background-clip', '-webkit-text-fill-color',
 ]);
 
 export function mapJustify(v: string): PrimaryAxisAlign {

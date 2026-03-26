@@ -19,6 +19,7 @@ const STYLE_PROPS = [
   'font-family', 'font-size', 'font-weight', 'line-height',
   'letter-spacing', 'text-align', 'text-decoration', 'text-transform', 'color',
   'background-color', 'background-image', 'background-size', 'background-position', 'background-repeat',
+  'background-clip', '-webkit-background-clip', '-webkit-text-fill-color',
   'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
   'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
   'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',

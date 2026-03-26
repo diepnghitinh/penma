@@ -18,7 +18,11 @@ export function buildInlineStyle(styles: PenmaStyles): React.CSSProperties {
   for (const [key, value] of Object.entries(effective)) {
     if (!value || value === 'initial' || value === 'none') continue;
     // Convert CSS property names to camelCase for React
-    const camelKey = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    // Vendor prefixes like -webkit- need uppercase first letter (React convention)
+    let camelKey = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (camelKey.startsWith('webkit')) camelKey = 'W' + camelKey.slice(1);
+    else if (camelKey.startsWith('moz')) camelKey = 'M' + camelKey.slice(1);
+    else if (camelKey.startsWith('ms')) camelKey = 'M' + camelKey.slice(1);
     result[camelKey] = value;
   }
 

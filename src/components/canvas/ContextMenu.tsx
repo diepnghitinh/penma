@@ -271,7 +271,7 @@ export const CanvasContextMenu: React.FC = () => {
           {subMenu === 'move-to-page' && (
             <div
               ref={subMenuRef}
-              className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
+              className="absolute left-full top-0 -ml-1 rounded-lg shadow-lg border py-1"
               style={{
                 background: 'var(--penma-surface)',
                 borderColor: 'var(--penma-border)',
@@ -371,7 +371,7 @@ export const CanvasContextMenu: React.FC = () => {
 
           {subMenu === 'dev' && (
             <div
-              className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
+              className="absolute left-full top-0 -ml-1 rounded-lg shadow-lg border py-1"
               style={{
                 background: 'var(--penma-surface)',
                 borderColor: 'var(--penma-border)',
@@ -510,7 +510,7 @@ const ShareSubMenu: React.FC<{
 
   return (
     <div
-      className="absolute left-full top-0 ml-1 rounded-lg shadow-lg border py-1"
+      className="absolute left-full top-0 -ml-1 rounded-lg shadow-lg border py-1"
       style={{
         background: 'var(--penma-surface)',
         borderColor: 'var(--penma-border)',
