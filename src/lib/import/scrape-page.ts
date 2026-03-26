@@ -84,8 +84,83 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
     await page.goto(url.toString(), { waitUntil: 'networkidle2', timeout: TIMEOUT });
     progress(35, 'Page loaded');
 
-    progress(40, 'Waiting for JS rendering...');
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 1000)));
+    progress(40, 'Scrolling page to trigger lazy content...');
+    // Scroll through the entire page to trigger IntersectionObservers,
+    // lazy-loaded images, and scroll-triggered animations
+    await page.evaluate(async () => {
+      const scrollStep = Math.max(window.innerHeight * 0.8, 400);
+      const maxScroll = document.body.scrollHeight;
+      for (let y = 0; y < maxScroll; y += scrollStep) {
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      // Scroll to very bottom to catch any remaining elements
+      window.scrollTo(0, document.body.scrollHeight);
+      await new Promise((r) => setTimeout(r, 200));
+      // Scroll back to top
+      window.scrollTo(0, 0);
+      await new Promise((r) => setTimeout(r, 200));
+    });
+    progress(43, 'Revealing hidden content...');
+    // Force-reveal elements hidden by scroll animations, slideshows, and tabs
+    await page.evaluate(() => {
+      // 1) Inject CSS overrides for common animation/scroll-reveal classes
+      const style = document.createElement('style');
+      style.textContent = `
+        .fade-in, .fade-up, .fade-down, .fade-left, .fade-right,
+        [data-aos], [data-scroll], [data-animate],
+        .animate-on-scroll, .scroll-reveal, .reveal,
+        .wow, .sr, .lazy-animate {
+          opacity: 1 !important;
+          transform: none !important;
+          visibility: visible !important;
+          transition: none !important;
+          animation: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+
+      // 2) Force-reveal elements with inline opacity:0 (hidden slides, tabs, etc.)
+      //    Skip truly structural/metadata elements.
+      const SKIP = new Set(['script', 'style', 'noscript', 'link', 'meta', 'head']);
+      document.querySelectorAll('*').forEach((el) => {
+        if (SKIP.has(el.tagName.toLowerCase())) return;
+        const inlineStyle = (el as HTMLElement).style;
+        // Reveal elements hidden via inline opacity
+        if (inlineStyle.opacity === '0') {
+          inlineStyle.opacity = '1';
+        }
+        // Reveal elements hidden via inline transform (slide animations)
+        if (inlineStyle.transform && inlineStyle.transform !== 'none') {
+          inlineStyle.transform = 'none';
+        }
+        // Remove pointer-events:none from hidden slides
+        if (inlineStyle.pointerEvents === 'none') {
+          inlineStyle.pointerEvents = '';
+        }
+        // Un-stack slides/tabs that share the same grid-area (overlapping content)
+        if (inlineStyle.gridArea) {
+          inlineStyle.gridArea = '';
+        }
+        // Reveal tab/slide content hidden with display:none
+        const computed = window.getComputedStyle(el);
+        if (computed.display === 'none') {
+          // Only reveal content-like elements, not dropdowns/modals/tooltips
+          const tag = el.tagName.toLowerCase();
+          const isContent = ['div', 'section', 'article', 'li', 'tr', 'td', 'p',
+            'span', 'figure', 'aside', 'main', 'header', 'footer'].includes(tag);
+          if (isContent) {
+            inlineStyle.display = '';
+            // If still hidden via CSS class, force block
+            if (window.getComputedStyle(el).display === 'none') {
+              inlineStyle.setProperty('display', 'block', 'important');
+            }
+          }
+        }
+      });
+    });
+    progress(44, 'Waiting for JS rendering...');
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 800)));
     progress(45, 'Content rendered');
 
     progress(50, 'Extracting DOM structure...');
@@ -128,7 +203,7 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           nodeCount++;
 
           const tagName = element.tagName.toLowerCase();
-          if (['script', 'noscript', 'link', 'meta', 'style', 'br'].includes(tagName)) return null;
+          if (['script', 'noscript', 'link', 'meta', 'style'].includes(tagName)) return null;
 
           const rect = element.getBoundingClientRect();
           const computed = window.getComputedStyle(element);
@@ -136,7 +211,7 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
           // Skip truly invisible elements (0×0 with no content), but keep display:none
           // and visibility:hidden so the tree is complete
           if (
-            !['html', 'body', 'svg'].includes(tagName) &&
+            !['html', 'body', 'svg', 'br', 'hr'].includes(tagName) &&
             computed.display !== 'none' && computed.visibility !== 'hidden' &&
             rect.width === 0 && rect.height === 0
           ) return null;
