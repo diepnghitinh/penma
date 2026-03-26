@@ -110,8 +110,10 @@ export const SelectionOverlay: React.FC = () => {
 
   // Re-measure when camera changes (pan/zoom moves DOM elements)
   useEffect(() => {
+    let prevCamera = useEditorStore.getState().camera;
     const unsub = useEditorStore.subscribe((state) => {
-      if (state.camera) {
+      if (state.camera !== prevCamera) {
+        prevCamera = state.camera;
         cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(measureBoxes);
       }

@@ -3,6 +3,7 @@ import { scrapePage } from '@/lib/import/scrape-page';
 import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
 import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
 import { storeImportedCss } from '@/lib/import/store-css';
+import { processDocumentImages } from '@/lib/import/process-images';
 import type { AssetReference } from '@/types/document';
 
 export async function POST(request: NextRequest) {
@@ -69,6 +70,11 @@ export async function POST(request: NextRequest) {
         fontFormat: sf.format,
       };
     }
+
+    // Download and store images in MongoDB, rewrite src URLs
+    const imageAssets = await processDocumentImages(doc);
+    Object.assign(assets, imageAssets);
+
     doc.assets = assets;
 
     return NextResponse.json({ success: true, document: doc });
@@ -133,6 +139,11 @@ function streamImport(parsedUrl: URL, viewportWidth: number, viewportHeight: num
           }
           doc.assets = assets;
         }
+
+        // Download and store images in MongoDB, rewrite src URLs
+        send('progress', { percent: 92, step: 'Storing images...' });
+        const imageAssets = await processDocumentImages(doc, (msg) => send('progress', { percent: 93, step: msg }));
+        doc.assets = { ...doc.assets, ...imageAssets };
 
         send('progress', { percent: 95, step: 'Finalizing...' });
         send('progress', { percent: 100, step: 'Done!' });

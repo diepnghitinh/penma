@@ -94,16 +94,8 @@ interface LayerItemProps {
 }
 
 const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded, dragInfo, dropTarget, onDragStart, scrollRef, visibleIds }) => {
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const select = useEditorStore((s) => s.select);
-  const selectMultiple = useEditorStore((s) => s.selectMultiple);
-  const lastSelectedId = useEditorStore((s) => s.lastSelectedId);
-  const toggleNodeVisibility = useEditorStore((s) => s.toggleNodeVisibility);
-  const toggleNodeLock = useEditorStore((s) => s.toggleNodeLock);
-  const renameNode = useEditorStore((s) => s.renameNode);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-
-  const isSelected = selectedIds.includes(node.id);
+  // Only subscribe to selectedIds for highlight — actions via getState()
+  const isSelected = useEditorStore((s) => s.selectedIds.includes(node.id));
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded.ids.has(node.id);
   const label = node.name || node.tagName;
@@ -128,11 +120,12 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
   const commitRename = useCallback(() => {
     const trimmed = renameValue.trim();
     if (trimmed && trimmed !== (node.name || node.tagName)) {
+      const { pushHistory, renameNode } = useEditorStore.getState();
       pushHistory('Rename element');
       renameNode(node.id, trimmed);
     }
     setIsRenaming(false);
-  }, [renameValue, node.id, node.name, node.tagName, renameNode, pushHistory]);
+  }, [renameValue, node.id, node.name, node.tagName]);
 
   useEffect(() => {
     if (isSelected && rowRef.current) {
@@ -143,14 +136,15 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    select(node.id, false);
+    useEditorStore.getState().select(node.id, false);
     window.dispatchEvent(new CustomEvent('penma:contextmenu', {
       detail: { x: e.clientX, y: e.clientY, nodeId: node.id },
     }));
-  }, [node.id, select]);
+  }, [node.id]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    const { lastSelectedId, select, selectMultiple } = useEditorStore.getState();
     if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
       // Range selection: select all items between anchor and clicked
       const anchorIdx = visibleIds.indexOf(lastSelectedId);
@@ -167,7 +161,7 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
     select(node.id, false);
     const el = document.querySelector(`[data-penma-id="${node.id}"]`);
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [node.id, select, selectMultiple, lastSelectedId, visibleIds]);
+  }, [node.id, visibleIds]);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -240,11 +234,11 @@ const LayerItem: React.FC<LayerItemProps> = React.memo(({ node, depth, expanded,
         {!isRenaming && !dragInfo && (
           <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pr-1">
             <button className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-200"
-              onClick={(e) => { e.stopPropagation(); toggleNodeVisibility(node.id); }} title={node.visible ? 'Hide' : 'Show'}>
+              onClick={(e) => { e.stopPropagation(); useEditorStore.getState().toggleNodeVisibility(node.id); }} title={node.visible ? 'Hide' : 'Show'}>
               {node.visible ? <Eye size={11} /> : <EyeOff size={11} />}
             </button>
             <button className="flex h-5 w-5 items-center justify-center rounded hover:bg-neutral-200"
-              onClick={(e) => { e.stopPropagation(); toggleNodeLock(node.id); }} title={node.locked ? 'Unlock' : 'Lock'}>
+              onClick={(e) => { e.stopPropagation(); useEditorStore.getState().toggleNodeLock(node.id); }} title={node.locked ? 'Unlock' : 'Lock'}>
               {node.locked ? <Lock size={11} /> : <Unlock size={11} />}
             </button>
           </div>
@@ -321,18 +315,11 @@ const DragGhost: React.FC<{ name: string; y: number }> = ({ name, y }) => (
 // ─── Layer panel ────────────────────────────────────────────
 
 export const LayerPanel: React.FC = () => {
+  // Only subscribe to data that drives rendering — actions via getState()
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
-  const activePageId = useEditorStore((s) => s.activePageId);
-  const setActiveDocument = useEditorStore((s) => s.setActiveDocument);
-  const removeDocument = useEditorStore((s) => s.removeDocument);
   const selectedIds = useEditorStore((s) => s.selectedIds);
-  const selectMultiple = useEditorStore((s) => s.selectMultiple);
-  const select = useEditorStore((s) => s.select);
   const lastSelectedId = useEditorStore((s) => s.lastSelectedId);
-  const reorderNode = useEditorStore((s) => s.reorderNode);
-  const pushHistory = useEditorStore((s) => s.pushHistory);
-  void activePageId;
 
   const expanded = useExpandedState();
   const prevSelectedRef = useRef<string[]>([]);
@@ -376,7 +363,7 @@ export const LayerPanel: React.FC = () => {
         dragThresholdMet.current = true;
         // For select mode, select the start item immediately
         if (dragInfo.mode === 'select') {
-          select(dragInfo.nodeId, false);
+          useEditorStore.getState().select(dragInfo.nodeId, false);
         }
       }
 
@@ -404,7 +391,7 @@ export const LayerPanel: React.FC = () => {
           if (startIdx !== -1 && endIdx !== -1) {
             const from = Math.min(startIdx, endIdx);
             const to = Math.max(startIdx, endIdx);
-            selectMultiple(visibleIds.slice(from, to + 1));
+            useEditorStore.getState().selectMultiple(visibleIds.slice(from, to + 1));
           }
         }
         return;
@@ -499,6 +486,7 @@ export const LayerPanel: React.FC = () => {
         }
 
         if (targetParentId) {
+          const { pushHistory, reorderNode } = useEditorStore.getState();
           pushHistory('Reorder element');
           reorderNode(dragInfo.nodeId, targetParentId, targetIndex);
         }
@@ -525,7 +513,7 @@ export const LayerPanel: React.FC = () => {
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dragInfo, dropTarget, documents, expanded, pushHistory, reorderNode, visibleIds, select, selectMultiple]);
+  }, [dragInfo, dropTarget, documents, expanded, visibleIds]);
 
   // Auto-expand ancestors when selection changes
   useEffect(() => {
@@ -597,24 +585,24 @@ export const LayerPanel: React.FC = () => {
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  select(doc.rootNode.id, false);
+                  useEditorStore.getState().select(doc.rootNode.id, false);
                   window.dispatchEvent(new CustomEvent('penma:contextmenu', {
                     detail: { x: e.clientX, y: e.clientY, nodeId: doc.rootNode.id },
                   }));
                 }}
                 onClick={(e) => {
-                  setActiveDocument(doc.id);
+                  useEditorStore.getState().setActiveDocument(doc.id);
                   if (e.shiftKey && lastSelectedId && visibleIds.length > 0) {
                     const anchorIdx = visibleIds.indexOf(lastSelectedId);
                     const clickIdx = visibleIds.indexOf(doc.rootNode.id);
                     if (anchorIdx !== -1 && clickIdx !== -1) {
                       const start = Math.min(anchorIdx, clickIdx);
                       const end = Math.max(anchorIdx, clickIdx);
-                      selectMultiple(visibleIds.slice(start, end + 1));
+                      useEditorStore.getState().selectMultiple(visibleIds.slice(start, end + 1));
                       return;
                     }
                   }
-                  select(doc.rootNode.id, false);
+                  useEditorStore.getState().select(doc.rootNode.id, false);
                 }}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
@@ -634,7 +622,7 @@ export const LayerPanel: React.FC = () => {
                 <button
                   className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 ml-1"
                   style={{ color: 'var(--penma-text-muted)' }}
-                  onClick={(e) => { e.stopPropagation(); removeDocument(doc.id); }}
+                  onClick={(e) => { e.stopPropagation(); useEditorStore.getState().removeDocument(doc.id); }}
                   title="Remove frame"
                 >
                   ×

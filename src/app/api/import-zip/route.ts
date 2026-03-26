@@ -8,6 +8,7 @@ import { scrapePage } from '@/lib/import/scrape-page';
 import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
 import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
 import { storeImportedCss } from '@/lib/import/store-css';
+import { processDocumentImages } from '@/lib/import/process-images';
 import type { AssetReference, PenmaDocument } from '@/types/document';
 import { importBlacklist } from '@/configs/editor';
 
@@ -158,6 +159,10 @@ export async function POST(request: NextRequest) {
               }
               doc.assets = assets;
             }
+
+            // Download and store images (file:// URLs from ZIP) before temp dir cleanup
+            const imageAssets = await processDocumentImages(doc);
+            doc.assets = { ...doc.assets, ...imageAssets };
 
             // Use the filename as the frame name
             if (doc.rootNode) {
