@@ -64,6 +64,19 @@ export const ShapeCreator: React.FC<{
         }
       }
 
+      // Emit debug info for DebugOverlay
+      window.dispatchEvent(new CustomEvent('penma:debug:shape', {
+        detail: {
+          tool: activeTool,
+          screen: { startX: start.x, startY: start.y, endX: e.clientX, endY: e.clientY },
+          canvasRel: { startX: start.x - canvasRect.left, startY: start.y - canvasRect.top, endX: e.clientX - canvasRect.left, endY: e.clientY - canvasRect.top },
+          doc: { startX: startDoc.x, startY: startDoc.y, endX: endDoc.x, endY: endDoc.y },
+          final: { x: finalX, y: finalY, w, h },
+          camera: { x: cam.x, y: cam.y, zoom: cam.zoom },
+          frameId,
+        },
+      }));
+
       const node = createShapeNode(activeTool, finalX, finalY, w, h);
       if (node) {
         store.pushHistory(`Create ${activeTool}`);

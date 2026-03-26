@@ -53,6 +53,9 @@ export function useCanvasDrag(
       if (!isActive || e.button !== 0) return;
       const target = e.target as HTMLElement;
 
+      // Don't start drag on UI overlays (debug panel, toolbars, etc.)
+      if (target.closest('[data-penma-overlay]')) return;
+
       // For select tool: only on empty canvas (not on elements)
       // For shape tools: on empty canvas or inside frames
       const penmaEl = target.closest('[data-penma-id]') as HTMLElement | null;

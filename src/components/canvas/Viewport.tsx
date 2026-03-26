@@ -13,9 +13,14 @@ const CanvasShapesLayer = React.memo<{ documents: PenmaDocument[] }>(({ document
   if (canvasDocs.length === 0) return null;
   return (
     <>
-      {canvasDocs.map((doc) => (
-        <DocumentRenderer key={doc.id} node={doc.rootNode} />
-      ))}
+      {canvasDocs.map((doc) =>
+        // Render each shape child directly — skip the root node to avoid
+        // DocumentRenderer style processing that could offset the origin.
+        // The viewport div is the containing block for these absolute shapes.
+        doc.rootNode.children.map((child) => (
+          <DocumentRenderer key={child.id} node={child} />
+        ))
+      )}
     </>
   );
 });

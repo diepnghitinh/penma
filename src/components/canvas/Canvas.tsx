@@ -198,6 +198,9 @@ export const Canvas: React.FC = () => {
         </div>
       )}
 
+      {/* Debug viewport overlay (Ctrl+Shift+D or ?debug in URL) */}
+      <DebugOverlay canvasRef={canvasRef} />
+
       <AutoLayoutOverlay />
       <MeasureOverlay />
       <SmartGuidesOverlay />
@@ -207,9 +210,6 @@ export const Canvas: React.FC = () => {
 
       {/* Load imported web fonts */}
       <FontLoader />
-
-      {/* Debug viewport overlay (Ctrl+Shift+D or ?debug in URL) */}
-      <DebugOverlay canvasRef={canvasRef} />
 
       {/* Figma-style bottom toolbar */}
       <BottomToolbar />

@@ -534,7 +534,7 @@ export const createDocumentSlice: StateCreator<
             tagName: 'div',
             attributes: {},
             children: [],
-            styles: { computed: { position: 'absolute', left: '0px', top: '0px' }, overrides: {} },
+            styles: { computed: {}, overrides: {} },
             bounds: { x: 0, y: 0, width: 0, height: 0 },
             visible: true,
             locked: false,
