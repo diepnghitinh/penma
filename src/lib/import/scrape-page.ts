@@ -102,9 +102,86 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
       await new Promise((r) => setTimeout(r, 200));
     });
     progress(43, 'Revealing hidden content...');
-    // Force-reveal elements hidden by scroll animations, slideshows, and tabs
+    // Force-reveal elements hidden by scroll animations and collapse slideshows
     await page.evaluate(() => {
-      // 1) Inject CSS overrides for common animation/scroll-reveal classes
+      // ── 1) Detect slideshow containers and keep only the first slide ──
+      // Common patterns: siblings sharing grid-area, or common slideshow class names
+      const SLIDE_CLASS_RE = /\b(slide|swiper-slide|carousel-item|slick-slide|splide__slide|glide__slide|flickity-cell)\b/i;
+      const SLIDER_CLASS_RE = /\b(slider|carousel|swiper|slideshow|slick|splide|glide|flickity|owl-carousel)\b/i;
+
+      function detectAndCollapseSlideshow(parent: Element) {
+        const children = Array.from(parent.children) as HTMLElement[];
+        if (children.length < 2) return;
+
+        // Pattern A: siblings sharing the same grid-area (stacked slides)
+        const gridAreaGroups = new Map<string, HTMLElement[]>();
+        for (const child of children) {
+          const ga = child.style.gridArea || child.style.getPropertyValue('grid-area');
+          if (ga && ga !== 'auto') {
+            const group = gridAreaGroups.get(ga) || [];
+            group.push(child);
+            gridAreaGroups.set(ga, group);
+          }
+        }
+        for (const [, group] of gridAreaGroups) {
+          if (group.length >= 2) {
+            // Keep first, remove rest
+            for (let i = 1; i < group.length; i++) {
+              group[i].remove();
+            }
+          }
+        }
+
+        // Pattern B: parent has slideshow class
+        const parentClass = parent.className || '';
+        if (SLIDER_CLASS_RE.test(parentClass)) {
+          const remaining = Array.from(parent.children) as HTMLElement[];
+          for (let i = 1; i < remaining.length; i++) {
+            remaining[i].remove();
+          }
+          return;
+        }
+
+        // Pattern C: siblings share a common slide class
+        const remainingChildren = Array.from(parent.children) as HTMLElement[];
+        const slideChildren = remainingChildren.filter((c) =>
+          SLIDE_CLASS_RE.test(c.className || ''));
+        if (slideChildren.length >= 2) {
+          for (let i = 1; i < slideChildren.length; i++) {
+            slideChildren[i].remove();
+          }
+          return;
+        }
+
+        // Pattern D: siblings where first has opacity:1 and others have opacity:0
+        //            with same positioning (absolute or grid-area stacking)
+        if (remainingChildren.length >= 2) {
+          const firstStyle = remainingChildren[0].style;
+          const hasHiddenSiblings = remainingChildren.slice(1).every((c) => {
+            const s = c.style;
+            return s.opacity === '0' || s.display === 'none' ||
+              (s.pointerEvents === 'none' && (s.opacity === '0' || s.transform));
+          });
+          const firstIsVisible = firstStyle.opacity !== '0' && firstStyle.display !== 'none';
+          if (firstIsVisible && hasHiddenSiblings) {
+            // Check they share the same structure (similar tag/class pattern)
+            const firstTag = remainingChildren[0].tagName;
+            const allSameTag = remainingChildren.every((c) => c.tagName === firstTag);
+            if (allSameTag) {
+              for (let i = 1; i < remainingChildren.length; i++) {
+                remainingChildren[i].remove();
+              }
+            }
+          }
+        }
+      }
+
+      // Walk all elements to detect slideshow containers
+      document.querySelectorAll('*').forEach((el) => {
+        detectAndCollapseSlideshow(el);
+      });
+
+      // ── 2) Inject CSS overrides for common animation/scroll-reveal classes ──
       const style = document.createElement('style');
       style.textContent = `
         .fade-in, .fade-up, .fade-down, .fade-left, .fade-right,
@@ -120,8 +197,7 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
       `;
       document.head.appendChild(style);
 
-      // 2) Force-reveal elements with inline opacity:0 (hidden slides, tabs, etc.)
-      //    Skip truly structural/metadata elements.
+      // ── 3) Force-reveal remaining hidden content (non-slideshow) ──
       const SKIP = new Set(['script', 'style', 'noscript', 'link', 'meta', 'head']);
       document.querySelectorAll('*').forEach((el) => {
         if (SKIP.has(el.tagName.toLowerCase())) return;
@@ -130,28 +206,22 @@ export async function scrapePage(opts: ScrapeOptions): Promise<ScrapeResult> {
         if (inlineStyle.opacity === '0') {
           inlineStyle.opacity = '1';
         }
-        // Reveal elements hidden via inline transform (slide animations)
+        // Clear leftover slide transforms
         if (inlineStyle.transform && inlineStyle.transform !== 'none') {
           inlineStyle.transform = 'none';
         }
-        // Remove pointer-events:none from hidden slides
+        // Remove pointer-events:none
         if (inlineStyle.pointerEvents === 'none') {
           inlineStyle.pointerEvents = '';
         }
-        // Un-stack slides/tabs that share the same grid-area (overlapping content)
-        if (inlineStyle.gridArea) {
-          inlineStyle.gridArea = '';
-        }
-        // Reveal tab/slide content hidden with display:none
+        // Reveal tab content hidden with display:none
         const computed = window.getComputedStyle(el);
         if (computed.display === 'none') {
-          // Only reveal content-like elements, not dropdowns/modals/tooltips
           const tag = el.tagName.toLowerCase();
           const isContent = ['div', 'section', 'article', 'li', 'tr', 'td', 'p',
             'span', 'figure', 'aside', 'main', 'header', 'footer'].includes(tag);
           if (isContent) {
             inlineStyle.display = '';
-            // If still hidden via CSS class, force block
             if (window.getComputedStyle(el).display === 'none') {
               inlineStyle.setProperty('display', 'block', 'important');
             }

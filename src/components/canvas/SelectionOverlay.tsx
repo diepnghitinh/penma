@@ -480,7 +480,7 @@ export const SelectionOverlay: React.FC = () => {
   ];
 
   return (
-    <div className="pointer-events-none fixed inset-0" style={{ zIndex: 'var(--z-overlay)' }}>
+    <div className="pointer-events-none fixed inset-0" data-penma-overlay style={{ zIndex: 'var(--z-overlay)' }}>
       {/* Hover highlight */}
       {hoverBox && (
         <div
