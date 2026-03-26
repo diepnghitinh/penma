@@ -173,6 +173,8 @@ function buildTextContainer(
     autoLayout: containerAutoLayout,
     sizing: containerSizing,
     fills: parseBgToFills(styles),
+    cssClasses: node.cssClasses,
+    matchedCssRules: node.matchedCssRules,
   };
 }
 
