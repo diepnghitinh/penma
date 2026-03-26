@@ -469,5 +469,5 @@ const FrameResizeHandle: React.FC<{
     }),
   };
 
-  return <div style={style} onPointerDown={handlePointerDown} />;
+  return <div style={style} onPointerDown={handlePointerDown} data-penma-overlay />;
 };
