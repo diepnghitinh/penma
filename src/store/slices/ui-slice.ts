@@ -44,7 +44,7 @@ export const createUISlice: StateCreator<
   UISlice
 > = (set, get) => ({
   activeTool: 'select',
-  openPanels: ['layers', 'styles'],
+  openPanels: ['layers', 'styles', 'design-system'],
   showImportDialog: true,
   showImportZipDialog: false,
   showExportDialog: false,

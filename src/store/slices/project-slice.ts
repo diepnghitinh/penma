@@ -91,6 +91,7 @@ export const createProjectSlice: StateCreator<
   saveProject: async () => {
     const state = get();
     if (!state.projectId) return;
+    if (state.isSaving) return; // Prevent overlapping saves
 
     // Save current page state into pages array before persisting
     const pages = state.pages.map((p) => {
@@ -114,6 +115,9 @@ export const createProjectSlice: StateCreator<
     });
 
     set({ isSaving: true });
+
+    // Yield to the event loop so the UI can update before heavy serialization
+    await new Promise((r) => setTimeout(r, 0));
 
     try {
       // Convert pages to plain serializable objects for the API
@@ -160,6 +164,8 @@ export const createProjectSlice: StateCreator<
 
       // DB is now up to date — clear local save
       clearProjectLocal(state.projectId);
+    } catch {
+      // Save failed — keep isDirty so it retries on next auto-save cycle
     } finally {
       set({ isSaving: false });
     }
