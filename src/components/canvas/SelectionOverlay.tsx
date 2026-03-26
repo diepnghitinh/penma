@@ -56,7 +56,7 @@ export const SelectionOverlay: React.FC = () => {
   // ── Drag-to-move state ──
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
-  const dragNodeOriginal = useRef<{ id: string; top: number; left: number; position: string }[]>([]);
+  const dragNodeOriginal = useRef<{ id: string; el: HTMLElement; top: number; left: number; position: string }[]>([]);
   /** Cached sibling screen rects (built once at drag start) */
   const siblingRectsRef = useRef<SnapRect[]>([]);
   /** Initial bounding box of all dragged elements in screen space */
@@ -66,6 +66,8 @@ export const SelectionOverlay: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeDir = useRef<ResizeDir>('se');
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, nodeId: '' });
+  /** Cached DOM element ref for resize (avoid querySelector on every move) */
+  const resizeElRef = useRef<HTMLElement | null>(null);
   /** Cached sibling screen rects for resize snapping */
   const resizeSiblingRectsRef = useRef<SnapRect[]>([]);
   /** Initial screen rect of resizing element */
@@ -133,26 +135,23 @@ export const SelectionOverlay: React.FC = () => {
     setIsDragging(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
 
-    // Capture original positions and position type
+    // Capture original positions, position type, and cache DOM element refs
     dragNodeOriginal.current = selectedIds.map((id) => {
       const el = document.querySelector(`[data-penma-id="${id}"]`) as HTMLElement | null;
       const cs = el ? window.getComputedStyle(el) : null;
+      // Ensure element is positioned for move
+      if (el) {
+        const pos = cs?.position || '';
+        if (pos === 'static' || !pos) el.style.position = 'relative';
+      }
       return {
         id,
+        el: el!,
         top: parseFloat(cs?.top || '0') || 0,
         left: parseFloat(cs?.left || '0') || 0,
         position: cs?.position || 'relative',
       };
     });
-
-    // Ensure element is positioned for move
-    for (const id of selectedIds) {
-      const el = document.querySelector(`[data-penma-id="${id}"]`) as HTMLElement | null;
-      if (el) {
-        const pos = window.getComputedStyle(el).position;
-        if (pos === 'static' || !pos) el.style.position = 'relative';
-      }
-    }
 
     // Cache sibling rects for smart guides (screen space)
     const selectedSet = new Set(selectedIds);
@@ -170,10 +169,9 @@ export const SelectionOverlay: React.FC = () => {
 
     // Cache initial bounding box of dragged elements in screen space
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const id of selectedIds) {
-      const el = document.querySelector(`[data-penma-id="${id}"]`);
-      if (el) {
-        const r = el.getBoundingClientRect();
+    for (const orig of dragNodeOriginal.current) {
+      if (orig.el) {
+        const r = orig.el.getBoundingClientRect();
         minX = Math.min(minX, r.x);
         minY = Math.min(minY, r.y);
         maxX = Math.max(maxX, r.x + r.width);
@@ -194,12 +192,16 @@ export const SelectionOverlay: React.FC = () => {
     /** Track the current snap correction for use in handleUp */
     let lastSnapDx = 0;
     let lastSnapDy = 0;
-    /** RAF id for throttled bounds sync */
-    let boundsSyncRaf = 0;
+    /** RAF id for all visual updates */
+    let moveRaf = 0;
+    /** Latest pointer coords (sampled at pointer rate, applied at RAF rate) */
+    let latestClientX = 0;
+    let latestClientY = 0;
 
-    const handleMove = (e: PointerEvent) => {
-      const screenDx = e.clientX - dragStart.current.x;
-      const screenDy = e.clientY - dragStart.current.y;
+    const applyMove = () => {
+      moveRaf = 0;
+      const screenDx = latestClientX - dragStart.current.x;
+      const screenDy = latestClientY - dragStart.current.y;
 
       // Tentative dragged bounding box in screen space
       const init = dragInitialScreenRect.current;
@@ -225,34 +227,36 @@ export const SelectionOverlay: React.FC = () => {
       const spacings = getEqualSpacing(snapped, siblingRectsRef.current);
       setSmartGuides(snap.guides, spacings);
 
-      // Apply to DOM (convert screen snap correction to document space)
+      // Apply to DOM via cached element refs (no querySelector)
       const dx = (screenDx + snap.dx) / camera.zoom;
       const dy = (screenDy + snap.dy) / camera.zoom;
       for (const orig of dragNodeOriginal.current) {
-        const el = document.querySelector(`[data-penma-id="${orig.id}"]`) as HTMLElement | null;
-        if (el) {
-          el.style.top = `${orig.top + dy}px`;
-          el.style.left = `${orig.left + dx}px`;
+        if (orig.el) {
+          orig.el.style.top = `${orig.top + dy}px`;
+          orig.el.style.left = `${orig.left + dx}px`;
         }
       }
 
-      // Live-sync bounds + selection boxes (throttled via RAF)
-      cancelAnimationFrame(boundsSyncRaf);
-      boundsSyncRaf = requestAnimationFrame(() => {
-        for (const orig of dragNodeOriginal.current) {
-          updateNodeBounds(orig.id, {
-            x: Math.round(orig.left + dx),
-            y: Math.round(orig.top + dy),
-          });
-        }
-        measureBoxesRef.current();
-      });
+      // Sync bounds + selection boxes
+      for (const orig of dragNodeOriginal.current) {
+        updateNodeBounds(orig.id, {
+          x: Math.round(orig.left + dx),
+          y: Math.round(orig.top + dy),
+        });
+      }
+      measureBoxesRef.current();
+    };
+
+    const handleMove = (e: PointerEvent) => {
+      latestClientX = e.clientX;
+      latestClientY = e.clientY;
+      if (!moveRaf) moveRaf = requestAnimationFrame(applyMove);
     };
 
     const handleUp = (e: PointerEvent) => {
       setIsDragging(false);
       clearSmartGuides();
-      cancelAnimationFrame(boundsSyncRaf);
+      if (moveRaf) { cancelAnimationFrame(moveRaf); moveRaf = 0; }
       const screenDx = e.clientX - dragStart.current.x;
       const screenDy = e.clientY - dragStart.current.y;
       const dx = (screenDx + lastSnapDx) / camera.zoom;
@@ -279,7 +283,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
-      cancelAnimationFrame(boundsSyncRaf);
+      if (moveRaf) cancelAnimationFrame(moveRaf);
       clearSmartGuides();
     };
   }, [isDragging, camera.zoom, pushHistory, updateNodeStyles]);
@@ -294,6 +298,7 @@ export const SelectionOverlay: React.FC = () => {
 
     const el = document.querySelector(`[data-penma-id="${selectedIds[0]}"]`) as HTMLElement | null;
     if (!el) return;
+    resizeElRef.current = el;
     const rect = el.getBoundingClientRect();
     const cs = window.getComputedStyle(el);
     resizeStart.current = {
@@ -330,6 +335,7 @@ export const SelectionOverlay: React.FC = () => {
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
     const updateNodeBounds = useEditorStore.getState().updateNodeBounds;
+    const zoomVal = camera.zoom;
 
     /** Compute tentative screen rect from resize direction and deltas */
     const computeResizeRect = (dx: number, dy: number): { x: number; y: number; w: number; h: number } => {
@@ -343,21 +349,25 @@ export const SelectionOverlay: React.FC = () => {
       if (dir.includes('w')) { w -= dx; x += dx; }
       if (dir.includes('s')) h += dy;
       if (dir.includes('n')) { h -= dy; y += dy; }
-      w = Math.max(20 * camera.zoom, w);
-      h = Math.max(20 * camera.zoom, h);
+      w = Math.max(20 * zoomVal, w);
+      h = Math.max(20 * zoomVal, h);
       return { x, y, w, h };
     };
 
     let lastSnapDx = 0;
     let lastSnapDy = 0;
-    /** RAF id for throttled bounds sync */
-    let boundsSyncRaf = 0;
+    /** RAF id for all visual updates */
+    let resizeRaf = 0;
+    /** Latest pointer coords (sampled at pointer rate, applied at RAF rate) */
+    let latestClientX = 0;
+    let latestClientY = 0;
 
-    const handleMove = (e: PointerEvent) => {
-      const screenDx = e.clientX - resizeStart.current.x;
-      const screenDy = e.clientY - resizeStart.current.y;
+    const applyResize = () => {
+      resizeRaf = 0;
+      const screenDx = latestClientX - resizeStart.current.x;
+      const screenDy = latestClientY - resizeStart.current.y;
       const dir = resizeDir.current;
-      const el = document.querySelector(`[data-penma-id="${resizeStart.current.nodeId}"]`) as HTMLElement | null;
+      const el = resizeElRef.current;
       if (!el) return;
 
       // Tentative screen rect
@@ -381,41 +391,42 @@ export const SelectionOverlay: React.FC = () => {
       let newH = resizeStart.current.height;
       let newLeft = resizeStart.current.left;
       let newTop = resizeStart.current.top;
-      const adjDx = (screenDx + snap.dx) / camera.zoom;
-      const adjDy = (screenDy + snap.dy) / camera.zoom;
+      const adjDx = (screenDx + snap.dx) / zoomVal;
+      const adjDy = (screenDy + snap.dy) / zoomVal;
       if (dir.includes('e')) newW += adjDx;
       if (dir.includes('w')) { newW -= adjDx; newLeft += adjDx; }
       if (dir.includes('s')) newH += adjDy;
       if (dir.includes('n')) { newH -= adjDy; newTop += adjDy; }
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
+
+      // Batch all DOM writes together
       el.style.width = `${newW}px`;
       el.style.height = `${newH}px`;
       if (dir.includes('w')) el.style.left = `${newLeft}px`;
       if (dir.includes('n')) el.style.top = `${newTop}px`;
 
-      // Live-sync bounds to store (throttled via RAF) so sidebar updates in real-time
-      const syncW = newW;
-      const syncH = newH;
-      const syncLeft = newLeft;
-      const syncTop = newTop;
-      cancelAnimationFrame(boundsSyncRaf);
-      boundsSyncRaf = requestAnimationFrame(() => {
-        const boundsUpdate: Record<string, number> = {
-          width: Math.round(syncW),
-          height: Math.round(syncH),
-        };
-        if (dir.includes('w')) boundsUpdate.x = Math.round(syncLeft);
-        if (dir.includes('n')) boundsUpdate.y = Math.round(syncTop);
-        updateNodeBounds(resizeStart.current.nodeId, boundsUpdate);
-        measureBoxesRef.current();
-      });
+      // Sync bounds to store
+      const boundsUpdate: Record<string, number> = {
+        width: Math.round(newW),
+        height: Math.round(newH),
+      };
+      if (dir.includes('w')) boundsUpdate.x = Math.round(newLeft);
+      if (dir.includes('n')) boundsUpdate.y = Math.round(newTop);
+      updateNodeBounds(resizeStart.current.nodeId, boundsUpdate);
+      measureBoxesRef.current();
+    };
+
+    const handleMove = (e: PointerEvent) => {
+      latestClientX = e.clientX;
+      latestClientY = e.clientY;
+      if (!resizeRaf) resizeRaf = requestAnimationFrame(applyResize);
     };
 
     const handleUp = (e: PointerEvent) => {
       setIsResizing(false);
       clearSmartGuides();
-      cancelAnimationFrame(boundsSyncRaf);
+      if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
 
       const screenDx = e.clientX - resizeStart.current.x;
       const screenDy = e.clientY - resizeStart.current.y;
@@ -424,8 +435,8 @@ export const SelectionOverlay: React.FC = () => {
       let newH = resizeStart.current.height;
       let newLeft = resizeStart.current.left;
       let newTop = resizeStart.current.top;
-      const adjDx = (screenDx + lastSnapDx) / camera.zoom;
-      const adjDy = (screenDy + lastSnapDy) / camera.zoom;
+      const adjDx = (screenDx + lastSnapDx) / zoomVal;
+      const adjDy = (screenDy + lastSnapDy) / zoomVal;
       if (dir.includes('e')) newW += adjDx;
       if (dir.includes('w')) { newW -= adjDx; newLeft += adjDx; }
       if (dir.includes('s')) newH += adjDy;
@@ -454,6 +465,7 @@ export const SelectionOverlay: React.FC = () => {
 
       updateNodeStyles(nodeId, styleUpdate);
       updateNodeBounds(nodeId, boundsUpdate);
+      resizeElRef.current = null;
       measureBoxesRef.current();
     };
 
@@ -462,7 +474,7 @@ export const SelectionOverlay: React.FC = () => {
     return () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
-      cancelAnimationFrame(boundsSyncRaf);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       clearSmartGuides();
     };
   }, [isResizing, camera.zoom, pushHistory, updateNodeStyles]);

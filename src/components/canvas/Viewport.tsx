@@ -378,14 +378,25 @@ const FrameResizeHandle: React.FC<{
 
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
+    const resizeEdges = {
+      right: direction === 'e' || direction === 'se',
+      bottom: direction === 's' || direction === 'se',
+    };
 
-    const handleMove = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startRef.current.x) / zoom;
-      const dy = (ev.clientY - startRef.current.y) / zoom;
+    let frameResizeRaf = 0;
+    let latestX = 0;
+    let latestY = 0;
+    let lastSnapW = 0;
+    let lastSnapH = 0;
+
+    const applyFrameResize = () => {
+      frameResizeRaf = 0;
+      const dx = (latestX - startRef.current.x) / zoom;
+      const dy = (latestY - startRef.current.y) / zoom;
       let w = startRef.current.w;
       let h = startRef.current.h;
-      if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
-      if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
+      if (resizeEdges.right) w = Math.max(200, Math.round(startRef.current.w + dx));
+      if (resizeEdges.bottom) h = Math.max(200, Math.round(startRef.current.h + dy));
 
       const screenRect: SnapRect = {
         id: docId,
@@ -394,20 +405,18 @@ const FrameResizeHandle: React.FC<{
         width: w * zoom,
         height: h * zoom,
       };
-      const resizeEdges = {
-        right: direction === 'e' || direction === 'se',
-        bottom: direction === 's' || direction === 'se',
-      };
       const snap = getResizeSnap(screenRect, siblingFramesRef.current, resizeEdges);
       setSmartGuides(snap.guides, []);
 
       if (resizeEdges.right) w = Math.max(200, Math.round(w + snap.dx / zoom));
       if (resizeEdges.bottom) h = Math.max(200, Math.round(h + snap.dy / zoom));
+      lastSnapW = w;
+      lastSnapH = h;
 
       const frame = frameElRef.current;
       if (frame) {
-        if (direction === 'e' || direction === 'se') frame.style.width = `${w}px`;
-        if (direction === 's' || direction === 'se') frame.style.minHeight = `${h}px`;
+        if (resizeEdges.right) frame.style.width = `${w}px`;
+        if (resizeEdges.bottom) frame.style.minHeight = `${h}px`;
       }
       handle.style.left = direction === 's' ? '0' : `${w - (direction === 'se' ? 4 : 2)}px`;
       handle.style.top = direction === 'e' ? '0' : `${h - (direction === 'se' ? 4 : 2)}px`;
@@ -416,34 +425,19 @@ const FrameResizeHandle: React.FC<{
       if (sizeElRef.current) sizeElRef.current.textContent = `${w}×${h}`;
     };
 
-    const handleUp = (ev: PointerEvent) => {
+    const handleMove = (ev: PointerEvent) => {
+      latestX = ev.clientX;
+      latestY = ev.clientY;
+      if (!frameResizeRaf) frameResizeRaf = requestAnimationFrame(applyFrameResize);
+    };
+
+    const handleUp = () => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
+      if (frameResizeRaf) { cancelAnimationFrame(frameResizeRaf); frameResizeRaf = 0; }
       clearSmartGuides();
-
-      const dx = (ev.clientX - startRef.current.x) / zoom;
-      const dy = (ev.clientY - startRef.current.y) / zoom;
-      let w = startRef.current.w;
-      let h = startRef.current.h;
-      if (direction === 'e' || direction === 'se') w = Math.max(200, Math.round(startRef.current.w + dx));
-      if (direction === 's' || direction === 'se') h = Math.max(200, Math.round(startRef.current.h + dy));
-
-      const screenRect: SnapRect = {
-        id: docId,
-        x: initScreenRectRef.current.x,
-        y: initScreenRectRef.current.y,
-        width: w * zoom,
-        height: h * zoom,
-      };
-      const resizeEdges = {
-        right: direction === 'e' || direction === 'se',
-        bottom: direction === 's' || direction === 'se',
-      };
-      const snap = getResizeSnap(screenRect, siblingFramesRef.current, resizeEdges);
-      if (resizeEdges.right) w = Math.max(200, Math.round(w + snap.dx / zoom));
-      if (resizeEdges.bottom) h = Math.max(200, Math.round(h + snap.dy / zoom));
-
-      onResize(docId, { width: w, height: h });
+      // Apply final snapped values
+      onResize(docId, { width: lastSnapW || startRef.current.w, height: lastSnapH || startRef.current.h });
     };
 
     window.addEventListener('pointermove', handleMove);
