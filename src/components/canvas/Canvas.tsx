@@ -54,12 +54,17 @@ export const Canvas: React.FC = () => {
 
   // Wheel/touchpad scroll → pan & zoom
   // Pinch-to-zoom (ctrlKey + deltaY) → zoom at cursor
-  // Trackpad two-finger scroll (has deltaX) → pan
-  // Mouse wheel (no deltaX, deltaMode=1 or large deltaY steps) → zoom at cursor
+  // Trackpad two-finger scroll → pan
+  // Mouse wheel → zoom at cursor
   // Shift+scroll → horizontal pan
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Track whether recent events had deltaX (strong trackpad signal)
+    let recentHadDeltaX = false;
+    let deltaXTimer = 0;
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const state = useEditorStore.getState();
@@ -80,24 +85,37 @@ export const Canvas: React.FC = () => {
         return;
       }
 
-      // Detect trackpad vs mouse wheel:
-      // - Trackpad: deltaMode=0, often has deltaX, small fractional deltaY
-      // - Mouse wheel: deltaMode=1 (line-based) or deltaMode=0 with large integer deltaY steps
-      const isTrackpad = e.deltaMode === 0 && (Math.abs(e.deltaX) > 0.5 || Math.abs(e.deltaY) < 4);
+      // Track deltaX presence — trackpads almost always produce some deltaX
+      if (Math.abs(e.deltaX) > 0.5) {
+        recentHadDeltaX = true;
+        clearTimeout(deltaXTimer);
+        deltaXTimer = window.setTimeout(() => { recentHadDeltaX = false; }, 500);
+      }
 
-      if (isTrackpad) {
-        // Trackpad two-finger scroll → pan
-        state.pan(-e.deltaX, -e.deltaY);
-      } else {
+      // Detect trackpad vs mouse wheel:
+      // deltaMode=1 → line-based scrolling → always mouse wheel
+      // deltaMode=0 + deltaX present → trackpad (two-finger scroll has horizontal component)
+      // deltaMode=0 + recent deltaX → trackpad (even if this event has deltaX=0)
+      // deltaMode=0 + no deltaX + integer deltaY → mouse wheel (discrete steps)
+      const isMouseWheel = e.deltaMode === 1
+        || (e.deltaMode === 0 && !recentHadDeltaX && Math.abs(e.deltaX) < 0.5 && e.deltaY === Math.round(e.deltaY));
+
+      if (isMouseWheel) {
         // Mouse wheel → zoom at cursor
         const multiplier = e.deltaMode === 1 ? 20 : 1;
         const delta = -e.deltaY * multiplier * 0.002;
         const newZoom = state.camera.zoom * (1 + delta);
         state.zoomTo(newZoom, focal);
+      } else {
+        // Trackpad two-finger scroll → pan
+        state.pan(-e.deltaX, -e.deltaY);
       }
     };
     canvas.addEventListener('wheel', handleWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleWheel);
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+      clearTimeout(deltaXTimer);
+    };
   }, []);
 
   const handlePointerDown = useCallback(
