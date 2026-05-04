@@ -1,14 +1,37 @@
 'use client';
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import { useEditorStore } from '@/store/editor-store';
 import { getCanvasTransform } from '@/lib/canvas/coordinates';
 import { DocumentRenderer } from './DocumentRenderer';
 import type { PenmaDocument } from '@/types/document';
 
+/** Canvas-space rect that's currently visible on screen (with buffer). */
+interface VisibleBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const rectIntersects = (
+  a: { x: number; y: number; width: number; height: number },
+  b: VisibleBounds,
+): boolean =>
+  !(
+    a.x + a.width < b.x ||
+    a.x > b.x + b.width ||
+    a.y + a.height < b.y ||
+    a.y > b.y + b.height
+  );
+
 // ── Canvas shapes layer (local://canvas documents) ──────────
 
-const CanvasShapesLayer = React.memo<{ documents: PenmaDocument[] }>(({ documents }) => {
+const CanvasShapesLayer = React.memo<{
+  documents: PenmaDocument[];
+  visibleBounds: VisibleBounds | null;
+  selectedIds: Set<string>;
+}>(({ documents, visibleBounds, selectedIds }) => {
   const canvasDocs = documents.filter((d) => d.sourceUrl === 'local://canvas');
   if (canvasDocs.length === 0) return null;
   return (
@@ -17,9 +40,16 @@ const CanvasShapesLayer = React.memo<{ documents: PenmaDocument[] }>(({ document
         // Render each shape child directly — skip the root node to avoid
         // DocumentRenderer style processing that could offset the origin.
         // The viewport div is the containing block for these absolute shapes.
-        doc.rootNode.children.map((child) => (
-          <DocumentRenderer key={child.id} node={child} />
-        ))
+        // Cull off-screen shapes; always keep selected ones mounted so drag
+        // refs / measurements stay valid.
+        doc.rootNode.children.map((child) => {
+          const visible =
+            !visibleBounds ||
+            selectedIds.has(child.id) ||
+            rectIntersects(child.bounds, visibleBounds);
+          if (!visible) return null;
+          return <DocumentRenderer key={child.id} node={child} />;
+        })
       )}
     </>
   );
@@ -123,6 +153,7 @@ export const Viewport: React.FC<ViewportProps> = ({
   const documents = useEditorStore((s) => s.documents);
   const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
   const camera = useEditorStore((s) => s.camera);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const { setActiveDocument, updateDocumentViewport, removeDocument, pushHistory } = useEditorStore.getState();
 
   // Apply camera transform via ref — bypasses React reconciliation
@@ -142,14 +173,63 @@ export const Viewport: React.FC<ViewportProps> = ({
     return unsub;
   }, [viewportRef]);
 
+  // Track the size of the on-screen viewport (the parent of the transformed
+  // div) so we can compute which canvas-space rects are currently visible.
+  const [containerSize, setContainerSize] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const parent = viewportRef.current?.parentElement;
+    if (!parent) return;
+    const update = () => {
+      const r = parent.getBoundingClientRect();
+      setContainerSize((prev) =>
+        prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height },
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [viewportRef]);
+
+  // Visible canvas-space rect, with a buffer so panning a small amount
+  // doesn't constantly remount edge nodes.
+  const visibleBounds = useMemo<VisibleBounds | null>(() => {
+    if (containerSize.w === 0 || containerSize.h === 0) return null;
+    const BUFFER = 0.25; // 25% past each edge
+    const w = containerSize.w / camera.zoom;
+    const h = containerSize.h / camera.zoom;
+    return {
+      x: -camera.x / camera.zoom - w * BUFFER,
+      y: -camera.y / camera.zoom - h * BUFFER,
+      width: w * (1 + BUFFER * 2),
+      height: h * (1 + BUFFER * 2),
+    };
+  }, [containerSize, camera]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
   return (
     <div
       ref={viewportRef}
       className="absolute origin-top-left"
       style={{ willChange: 'transform' }}
     >
-      <CanvasShapesLayer documents={documents} />
-      {documents.filter((d) => d.sourceUrl !== 'local://canvas').map((doc) => (
+      <CanvasShapesLayer
+        documents={documents}
+        visibleBounds={visibleBounds}
+        selectedIds={selectedIdSet}
+      />
+      {documents.filter((d) => {
+        if (d.sourceUrl === 'local://canvas') return false;
+        // Always render the active document so selection / editing stays
+        // responsive even when the user pans it just out of view.
+        if (d.id === activeDocumentId) return true;
+        if (!visibleBounds) return true;
+        return rectIntersects(
+          { x: d.canvasX, y: d.canvasY, width: d.viewport.width, height: d.viewport.height },
+          visibleBounds,
+        );
+      }).map((doc) => (
         <DocumentFrame
           key={doc.id}
           doc={doc}
