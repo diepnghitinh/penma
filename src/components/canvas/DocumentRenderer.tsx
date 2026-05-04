@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useLayoutEffect, useRef } from 'react';
 import type { PenmaNode } from '@/types/document';
 import { getEffectiveStyles } from '@/lib/styles/style-resolver';
 import { autoLayoutToContainerCSS, sizingToChildCSS } from '@/lib/layout/auto-layout-engine';
@@ -243,6 +243,13 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     style.display = 'flex';
     style.alignItems = valignMap[valign] || 'start';
     style.justifyContent = halignMap[halign] || 'start';
+
+    // Containment: text never widens its parent or wraps onto a new line.
+    // The inner FitText scales itself horizontally to fit whatever width this
+    // span ends up with after the parent's flex shrink rules apply.
+    style.flexShrink = 1;
+    style.minWidth = 0;
+    style.overflow = 'hidden';
   }
 
   // ── Gradient text detection ──
@@ -421,8 +428,17 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {node.textContent && node.children.length === 0 && node.textContent}
-      {node.textContent && node.children.length > 0 && node.textContent}
+      {isTextElement && node.textContent ? (
+        <FitText
+          text={node.textContent}
+          halign={effectiveStyles['text-align'] || 'left'}
+        />
+      ) : (
+        <>
+          {node.textContent && node.children.length === 0 && node.textContent}
+          {node.textContent && node.children.length > 0 && node.textContent}
+        </>
+      )}
       {node.children.map((child) => (
         <DocumentRendererMemo
           key={child.id}
@@ -432,6 +448,69 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
         />
       ))}
     </Tag>
+  );
+};
+
+/**
+ * Renders text on a single line, scaled to fit the parent's available width.
+ * The parent (a leaf text span) sets `overflow: hidden` and constrains its own
+ * width via flex shrink rules, so this component just measures the natural
+ * text width and applies a uniform `transform: scale()` when it overflows.
+ *
+ * Effect: heavy/wide spans never widen ancestors and never trigger line wraps —
+ * they shrink visually to match whatever width their container has.
+ */
+const FitText: React.FC<{ text: string; halign: string }> = ({ text, halign }) => {
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+
+    let raf = 0;
+    const fit = () => {
+      raf = 0;
+      const elem = ref.current;
+      const par = elem?.parentElement;
+      if (!elem || !par) return;
+      elem.style.transform = '';
+      const natural = elem.offsetWidth;
+      const available = par.clientWidth;
+      if (natural <= 0 || available <= 0) return;
+      if (natural > available) {
+        elem.style.transform = `scale(${available / natural})`;
+      }
+    };
+
+    fit();
+    const ro = new ResizeObserver(() => {
+      if (!raf) raf = requestAnimationFrame(fit);
+    });
+    ro.observe(parent);
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [text]);
+
+  const originMap: Record<string, string> = {
+    left: '0 50%',
+    center: '50% 50%',
+    right: '100% 50%',
+  };
+
+  return (
+    <span
+      ref={ref}
+      style={{
+        whiteSpace: 'nowrap',
+        display: 'inline-block',
+        transformOrigin: originMap[halign] || '0 50%',
+      }}
+    >
+      {text}
+    </span>
   );
 };
 
