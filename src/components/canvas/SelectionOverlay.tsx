@@ -73,10 +73,15 @@ export const SelectionOverlay: React.FC = () => {
   /** Initial screen rect of resizing element */
   const resizeInitScreenRef = useRef<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Read DOM rects — triggered by selection/hover/camera changes, not continuous RAF
+  // Read DOM rects — triggered by selection/hover/camera changes, not continuous RAF.
+  // Reads latest selection/hover via getState() so the callback is reference-stable
+  // (empty deps). Previously this depended on selectedIds/hoveredId; if either ref
+  // changed every render, the effect → RAF → setState → render loop hit max depth.
   const measureBoxes = useCallback(() => {
+    const ids = useEditorStore.getState().selectedIds;
+    const hovered = useEditorStore.getState().hoveredId;
     const boxes: SelectionBox[] = [];
-    for (const id of selectedIds) {
+    for (const id of ids) {
       const el = document.querySelector(`[data-penma-id="${id}"]`);
       if (el) {
         const rect = el.getBoundingClientRect();
@@ -92,27 +97,27 @@ export const SelectionOverlay: React.FC = () => {
       return changed ? boxes : prev;
     });
 
-    if (hoveredId && !selectedIds.includes(hoveredId)) {
-      const el = document.querySelector(`[data-penma-id="${hoveredId}"]`);
+    if (hovered && !ids.includes(hovered)) {
+      const el = document.querySelector(`[data-penma-id="${hovered}"]`);
       if (el) {
         const rect = el.getBoundingClientRect();
         setHoverBox((prev) => {
           if (prev && Math.abs(prev.x - rect.x) < 0.5 && Math.abs(prev.y - rect.y) < 0.5 && Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) return prev;
           return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         });
-      } else setHoverBox(null);
-    } else setHoverBox(null);
-  }, [selectedIds, hoveredId]);
+      } else setHoverBox((prev) => (prev === null ? prev : null));
+    } else setHoverBox((prev) => (prev === null ? prev : null));
+  }, []);
 
-  // Keep a stable ref so effects can call measureBoxes without depending on it
+  // measureBoxes is reference-stable (empty deps), so this ref captures it once
+  // and never needs reassignment — kept for handlers that already use the ref.
   const measureBoxesRef = useRef(measureBoxes);
-  measureBoxesRef.current = measureBoxes;
 
   // Measure on selection/hover change
   useEffect(() => {
     rafRef.current = requestAnimationFrame(measureBoxes);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [measureBoxes]);
+  }, [selectedIds, hoveredId, measureBoxes]);
 
   // Re-measure when camera changes (pan/zoom moves DOM elements)
   useEffect(() => {

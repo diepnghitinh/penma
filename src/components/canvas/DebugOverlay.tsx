@@ -44,8 +44,8 @@ export const DebugOverlay: React.FC<{
       setEnabled(true);
     }
     const handleKey = (e: KeyboardEvent) => {
-      // Ctrl+Shift+D to toggle debug overlay
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      // Ctrl+Shift+P to toggle debug overlay
+      if (e.ctrlKey && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
         setEnabled((v) => !v);
         e.preventDefault();
       }
@@ -227,7 +227,7 @@ export const DebugOverlay: React.FC<{
         }}
       >
         <div style={{ color: '#ff6', marginBottom: 2, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <span>Debug Viewport (Ctrl+Shift+D)</span>
+          <span>Debug Viewport (Ctrl+Shift+P)</span>
           <span style={{ color: fps >= 50 ? '#0f0' : fps >= 30 ? '#ff6' : '#f44' }}>{fps} FPS</span>
         </div>
         <div>

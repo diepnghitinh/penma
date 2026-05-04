@@ -158,7 +158,17 @@ function assignIds(
   }
 
   const childCount = node.children?.length ?? 0;
-  const autoLayout = detectAutoLayout(node.styles, childCount);
+  const hasBr = node.children?.some((c) => c.tagName === 'br') ?? false;
+  // <span> is an inline element by spec — default it to a horizontal auto-layout
+  // so its children flow left-to-right, matching inline behavior.
+  let autoLayout = node.tagName === 'span'
+    ? { ...DEFAULT_AUTO_LAYOUT, direction: 'horizontal' as const }
+    : detectAutoLayout(node.styles, childCount);
+  // If the element contains <br> children, switch to wrap direction so inline
+  // content flows horizontally and the <br>s force line breaks via flex-basis.
+  if (autoLayout && hasBr && autoLayout.direction !== 'wrap') {
+    autoLayout = { ...autoLayout, direction: 'wrap' };
+  }
   const sizing = parentAutoLayout
     ? detectChildSizing(node.styles, parentAutoLayout)
     : {

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useCallback, memo } from 'react';
+import React, { memo } from 'react';
 import type { PenmaNode } from '@/types/document';
 import { getEffectiveStyles } from '@/lib/styles/style-resolver';
 import { autoLayoutToContainerCSS, sizingToChildCSS } from '@/lib/layout/auto-layout-engine';
 import { useEditorStore } from '@/store/editor-store';
+import { useNodeEvents } from './useNodeEvents';
 
 interface DocumentRendererProps {
   node: PenmaNode;
@@ -21,86 +22,32 @@ const VOID_ELEMENTS = new Set([
 // Tags to skip rendering entirely
 const SKIP_TAGS = new Set(['style', 'script', 'noscript', 'head']);
 
+// Tags remapped to <div> because they're invalid as descendants of <div>
+const REMAP_TAGS: Record<string, string> = {
+  html: 'div', body: 'div', head: 'div',
+  table: 'div', thead: 'div', tbody: 'div', tfoot: 'div',
+  tr: 'div', td: 'div', th: 'div', caption: 'div',
+  colgroup: 'div', col: 'div',
+};
+
+// Phrasing-only elements that cannot contain block-level children
+const PHRASING_ONLY = new Set(['p', 'span', 'a', 'em', 'strong', 'small', 'b', 'i', 'u', 'label', 'abbr', 'cite', 'code', 'mark', 'sub', 'sup', 'time']);
+
+// Recursively determine whether a node will render as a block-level element.
+// A phrasing-only element gets remapped to <div> when it has block descendants,
+// so an ancestor must remap too — otherwise we'd nest <div> inside <p>.
+function willRenderAsBlock(n: PenmaNode): boolean {
+  if (!n.visible) return false;
+  if (SKIP_TAGS.has(n.tagName)) return false;
+  if (VOID_ELEMENTS.has(n.tagName)) return false;
+  if (n.rawHtml) return true;
+  if (REMAP_TAGS[n.tagName]) return true;
+  if (!PHRASING_ONLY.has(n.tagName)) return true;
+  return n.children.some(willRenderAsBlock);
+}
+
 const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 0, parentAutoLayout }) => {
-  // Read store state lazily in handlers via getState() to avoid re-render subscriptions
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      const { activeTool, select } = useEditorStore.getState();
-      if (activeTool !== 'select') return;
-      e.stopPropagation();
-      select(node.id, e.shiftKey);
-    },
-    [node.id]
-  );
-
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const { selectedIds, select } = useEditorStore.getState();
-      if (!selectedIds.includes(node.id)) {
-        select(node.id, false);
-      }
-      window.dispatchEvent(new CustomEvent('penma:contextmenu', {
-        detail: { x: e.clientX, y: e.clientY, nodeId: node.id },
-      }));
-    },
-    [node.id]
-  );
-
-  const handleDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
-      const { editEnabled, editSettings, pushHistory, updateNodeText } = useEditorStore.getState();
-      if (!editEnabled || !editSettings.textEditable) return;
-      const hasEditableText = node.textContent || (e.currentTarget as HTMLElement).textContent?.trim();
-      if (!hasEditableText) return;
-      e.stopPropagation();
-      const el = e.currentTarget as HTMLElement;
-      el.contentEditable = 'true';
-      el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-
-      const originalText = el.textContent?.trim() || '';
-      const handleBlur = () => {
-        el.contentEditable = 'false';
-        const newText = el.textContent?.trim() || '';
-        if (newText !== originalText) {
-          pushHistory('Edit text');
-          updateNodeText(node.id, newText);
-        }
-        el.removeEventListener('blur', handleBlur);
-        el.removeEventListener('keydown', handleKey);
-      };
-      const handleKey = (ke: KeyboardEvent) => {
-        if (ke.key === 'Enter' && !ke.shiftKey) {
-          ke.preventDefault();
-          el.blur();
-        }
-        if (ke.key === 'Escape') {
-          el.textContent = originalText;
-          el.blur();
-        }
-      };
-      el.addEventListener('blur', handleBlur);
-      el.addEventListener('keydown', handleKey);
-    },
-    [node.textContent, node.id]
-  );
-
-  const handleMouseEnter = useCallback(() => {
-    const { activeTool, setHovered } = useEditorStore.getState();
-    if (activeTool === 'select') {
-      setHovered(node.id);
-    }
-  }, [node.id]);
-
-  const handleMouseLeave = useCallback(() => {
-    useEditorStore.getState().setHovered(null);
-  }, []);
+  const { handleClick, handleContextMenu, handleDoubleClick, handleMouseEnter, handleMouseLeave } = useNodeEvents(node);
 
   if (!node.visible || SKIP_TAGS.has(node.tagName)) return null;
 
@@ -116,10 +63,15 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     (style as any)[camelKey] = value;
   }
 
-  // Preserve positioning that works within parent context (absolute, relative)
-  // Only strip fixed/sticky which would break canvas containment
+  // Preserve positioning that works within parent context (absolute, relative).
+  // `fixed` is converted to `absolute` so the element keeps its captured offsets
+  // relative to the document frame instead of the browser viewport — this turns
+  // it into a regular Penma-positioned element. `sticky` is stripped because its
+  // scroll-driven behavior doesn't translate to a static design canvas.
   const pos = style.position as string | undefined;
-  if (pos === 'fixed' || pos === 'sticky') {
+  if (pos === 'fixed') {
+    style.position = 'absolute';
+  } else if (pos === 'sticky') {
     delete style.position;
     delete style.top;
     delete style.right;
@@ -135,10 +87,15 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     delete style.left;
   }
 
-  // For the body node, set some base styles
+  // For the body node, set some base styles. Force `position: relative` so any
+  // fixed→absolute children below anchor to the document frame, not some
+  // arbitrary ancestor or the canvas viewport.
   if (node.tagName === 'body') {
     style.margin = '0';
     style.minHeight = 'auto';
+    if (!style.position || style.position === 'static') {
+      style.position = 'relative';
+    }
   }
 
   // ── Auto Layout: strip computed flex props so the engine is sole authority ──
@@ -366,6 +323,8 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
   const safeAttrs: Record<string, string> = {};
   for (const [key, value] of Object.entries(node.attributes)) {
     if (key.startsWith('on') || key === 'style' || key === 'class') continue;
+    // Drop empty resource URLs — React warns and the browser may refetch the page
+    if ((key === 'src' || key === 'srcset' || key === 'href') && !value) continue;
     const reactKey = HTML_TO_REACT[key] || key;
     safeAttrs[reactKey] = value;
   }
@@ -407,18 +366,7 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
     );
   }
 
-  // Remap tags that are invalid as children of <div>
-  const REMAP_TAGS: Record<string, string> = {
-    html: 'div', body: 'div', head: 'div',
-    table: 'div', thead: 'div', tbody: 'div', tfoot: 'div',
-    tr: 'div', td: 'div', th: 'div', caption: 'div',
-    colgroup: 'div', col: 'div',
-  };
-  // Phrasing-only elements that cannot contain block-level children (div, section, etc.)
-  const PHRASING_ONLY = new Set(['p', 'span', 'a', 'em', 'strong', 'small', 'b', 'i', 'u', 'label', 'abbr', 'cite', 'code', 'mark', 'sub', 'sup', 'time']);
-  const hasBlockChildren = node.children.some((c) =>
-    !PHRASING_ONLY.has(c.tagName) && !VOID_ELEMENTS.has(c.tagName) && c.tagName !== 'span',
-  );
+  const hasBlockChildren = node.children.some(willRenderAsBlock);
   let tagName = REMAP_TAGS[node.tagName] ?? node.tagName;
   if (PHRASING_ONLY.has(tagName) && hasBlockChildren) {
     tagName = 'div';
@@ -428,6 +376,13 @@ const DocumentRendererInner: React.FC<DocumentRendererProps> = ({ node, depth = 
 
   // Void elements (input, br, hr, etc.) cannot have children
   if (isVoid) {
+    // <br> inside a flex-wrap parent: force it to occupy a full row so
+    // subsequent siblings wrap onto a new line (flex normally ignores <br>).
+    if (node.tagName === 'br' && parentAutoLayout?.direction === 'wrap') {
+      style.flexBasis = '100%';
+      style.width = '100%';
+      style.height = '0';
+    }
     return (
       <Tag
         data-penma-id={node.id}

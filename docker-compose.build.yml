@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  penma:
+    image: "registry.digitalocean.com/inchurch/linkadz.fe.prototype:penma"
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: Dockerfile.arm64
+      platforms:
+        - linux/arm64
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production

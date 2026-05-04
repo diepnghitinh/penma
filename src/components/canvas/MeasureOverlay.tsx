@@ -19,11 +19,7 @@ interface MeasureLine {
  * - Selected element ↔ parent edges (when no hover target)
  */
 export const MeasureOverlay: React.FC = () => {
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const camera = useEditorStore((s) => s.camera);
-
   const [altHeld, setAltHeld] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [lines, setLines] = useState<MeasureLine[]>([]);
   const rafRef = useRef(0);
 
@@ -46,27 +42,22 @@ export const MeasureOverlay: React.FC = () => {
     };
   }, []);
 
-  // Track mouse position for parent-edge measurement
-  useEffect(() => {
-    if (!altHeld) return;
-    const move = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY });
-    window.addEventListener('mousemove', move);
-    return () => window.removeEventListener('mousemove', move);
-  }, [altHeld]);
-
-  // Compute measurement lines
+  // Compute measurement lines. Reads latest store values via getState() so the
+  // callback is reference-stable (empty deps). Without this, an unstable
+  // selectedIds ref caused effect → setLines → render → effect → max-depth loop.
   const computeLines = useCallback(() => {
-    if (!altHeld || selectedIds.length === 0) {
-      setLines([]);
+    const ids = useEditorStore.getState().selectedIds;
+    const zoom = useEditorStore.getState().camera.zoom;
+    if (ids.length === 0) {
+      setLines((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
-    const selectedEl = document.querySelector(`[data-penma-id="${selectedIds[0]}"]`);
-    if (!selectedEl) { setLines([]); return; }
+    const selectedEl = document.querySelector(`[data-penma-id="${ids[0]}"]`);
+    if (!selectedEl) { setLines((prev) => (prev.length === 0 ? prev : [])); return; }
 
     const selRect = selectedEl.getBoundingClientRect();
     const result: MeasureLine[] = [];
-    const zoom = camera.zoom;
 
     // Measure selected element to its parent edges
     const parentEl = selectedEl.parentElement;
@@ -79,10 +70,12 @@ export const MeasureOverlay: React.FC = () => {
     }
 
     setLines(result);
-  }, [altHeld, selectedIds, mousePos, camera.zoom]);
+  }, []);
 
+  // RAF poll while Alt is held. When Alt is released we just stop polling and
+  // gate rendering on altHeld below — no setLines reset needed.
   useEffect(() => {
-    if (!altHeld) { setLines([]); return; }
+    if (!altHeld) return;
     const update = () => {
       computeLines();
       rafRef.current = requestAnimationFrame(update);

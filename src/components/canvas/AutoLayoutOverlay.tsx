@@ -11,14 +11,7 @@ import { findNodeById } from '@/lib/utils/tree-utils';
  * These only appear when an auto-layout node is selected.
  */
 export const AutoLayoutOverlay: React.FC = () => {
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const documents = useEditorStore((s) => s.documents);
-  const activeDocumentId = useEditorStore((s) => s.activeDocumentId);
-  const activePageId = useEditorStore((s) => s.activePageId);
-  const document = documents.find((d) => d.id === activeDocumentId) ?? documents[0] ?? null;
   const camera = useEditorStore((s) => s.camera);
-  // activePageId ensures re-render on page switch
-  void activePageId;
 
   const [overlayData, setOverlayData] = useState<{
     paddingRects: { x: number; y: number; w: number; h: number }[];
@@ -27,28 +20,37 @@ export const AutoLayoutOverlay: React.FC = () => {
 
   const rafRef = useRef(0);
 
+  // Reads latest store values via getState() so the callback is reference-stable
+  // (empty deps). Without this, an unstable selectedIds/documents/camera ref
+  // caused effect → setOverlayData → render → effect → max-depth loop.
   const computeOverlay = useCallback(() => {
+    const state = useEditorStore.getState();
+    const selectedIds = state.selectedIds;
+    const documents = state.documents;
+    const activeDocumentId = state.activeDocumentId;
+    const document = documents.find((d) => d.id === activeDocumentId) ?? documents[0] ?? null;
+
     if (!document || selectedIds.length !== 1) {
-      setOverlayData(null);
+      setOverlayData((prev) => (prev === null ? prev : null));
       return;
     }
 
     const node = findNodeById(document.rootNode, selectedIds[0]);
     if (!node?.autoLayout) {
-      setOverlayData(null);
+      setOverlayData((prev) => (prev === null ? prev : null));
       return;
     }
 
     const el = window.document.querySelector(`[data-penma-id="${node.id}"]`);
     if (!el) {
-      setOverlayData(null);
+      setOverlayData((prev) => (prev === null ? prev : null));
       return;
     }
 
     const containerRect = el.getBoundingClientRect();
     const layout = node.autoLayout;
     const { top: pt, right: pr, bottom: pb, left: pl } = layout.padding;
-    const zoom = camera.zoom;
+    const zoom = state.camera.zoom;
 
     // Padding regions (scaled by zoom since they're rendered from computed styles in px)
     const paddingRects: { x: number; y: number; w: number; h: number }[] = [];
@@ -134,7 +136,7 @@ export const AutoLayoutOverlay: React.FC = () => {
     }
 
     setOverlayData({ paddingRects, gapRects });
-  }, [selectedIds, document, camera]);
+  }, []);
 
   useEffect(() => {
     const update = () => {
