@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapePage } from '@/lib/import/scrape-page';
-import { buildPenmaDocument } from '@/lib/import/build-penma-tree';
+import { buildPenmaDocument } from '@/lib/execute/build-penma-tree';
 import { downloadAndStoreFonts } from '@/lib/import/extract-fonts';
 import { storeImportedCss } from '@/lib/import/store-css';
 import { processDocumentImages } from '@/lib/import/process-images';

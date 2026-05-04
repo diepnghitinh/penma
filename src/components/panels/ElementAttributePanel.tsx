@@ -136,6 +136,7 @@ export const ElementAttributePanel: React.FC = () => {
 const PositionSizeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
   const updateNodeBounds = useEditorStore((s) => s.updateNodeBounds);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
+  const updateSizing = useEditorStore((s) => s.updateSizing);
   const pushHistory = useEditorStore((s) => s.pushHistory);
 
   const handleBoundsChange = useCallback(
@@ -152,8 +153,12 @@ const PositionSizeSection: React.FC<{ node: PenmaNode }> = ({ node }) => {
       if (field === 'width') styleMap['width'] = `${num}px`;
       if (field === 'height') styleMap['height'] = `${num}px`;
       updateNodeStyles(node.id, styleMap);
+      // Flip sizing to 'fixed' so the renderer doesn't strip the explicit value
+      // when the axis was previously 'hug' or 'fill'.
+      if (field === 'width') updateSizing(node.id, 'horizontal', 'fixed');
+      if (field === 'height') updateSizing(node.id, 'vertical', 'fixed');
     },
-    [node.id, updateNodeBounds, updateNodeStyles, pushHistory]
+    [node.id, updateNodeBounds, updateNodeStyles, updateSizing, pushHistory]
   );
 
   return (

@@ -200,3 +200,43 @@ tbody {
 }
 
 Learning data and display suitable
+
+
+###
+with
+<p class="text-base lg:text-lg text-gray-500 mb-6 sm:mb-8 lg:mb-10 leading-relaxed max-w-lg mx-auto lg:mx-0">
+                        <strong class="text-brand-dark">데이터 기반의 성과 중심</strong> 전략으로,<br class="hidden lg:block">
+                        Employer Branding부터 온보딩, 리텐션 관리까지.<br class="hidden lg:block">
+                        인재 영입의 전 과정을 책임지는 <strong>토탈 솔루션</strong>을 제공합니다.
+                    </p>
+
+==> penma is:
+Auto layout:
+Column (
+    Row(
+        <strong class="text-brand-dark">데이터 기반의 성과 중심</strong>, 전략으로
+    ),
+    Row(Employer Branding부터 온보딩, 리텐션 관리까지.),
+    Row(인재 영입의 전 과정을 책임지는,
+        <strong>토탈 솔루션</strong>,
+        을 제공합니다.
+    )
+)
+
+###
+with 
+example:
+<h1 class="display-heading text-3xl sm:text-4xl lg:text-5xl font-bold text-brand-dark mb-4 sm:mb-6 lg:mb-8 leading-tight tracking-tight">
+                        채용의 고민을<br class="block"> 성과로 바꾸는 파트너,<br>
+                        <span class="text-brand-blue"><span class="font-bold">에이치웨이브</span>(HWAVE)</span>
+                    </h1>
+
+Auto layout:
+Column (
+    Row(
+        채용의 고민을
+    ),
+    Row(성과로 바꾸는 파트너,),
+    Row(<span class="text-brand-blue"><span class="font-bold">에이치웨이브</span>(HWAVE)</span>
+    )
+)

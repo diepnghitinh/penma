@@ -410,6 +410,9 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
           const otherProp = prop === 'width' ? 'height' : 'width';
           updateNodeStyles(node.id, { [prop]: `${num}px`, [otherProp]: `${otherNum}px` });
           updateNodeBounds(node.id, { [prop]: num, [otherProp]: otherNum });
+          // Flip both axes to 'fixed' so the renderer respects the explicit values.
+          updateSizing(node.id, 'horizontal', 'fixed');
+          updateSizing(node.id, 'vertical', 'fixed');
         }
       } else {
         if (parentDoc) {
@@ -421,10 +424,12 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
         } else {
           updateNodeStyles(node.id, { [prop]: `${num}px` });
           updateNodeBounds(node.id, { [prop]: num });
+          // Flip the edited axis to 'fixed' so the renderer respects the explicit value.
+          updateSizing(node.id, prop === 'width' ? 'horizontal' : 'vertical', 'fixed');
         }
       }
     },
-    [node.id, w, h, constrainProportions, updateNodeStyles, updateNodeBounds, updateDocumentViewport, parentDoc, pushHistory]
+    [node.id, w, h, constrainProportions, updateNodeStyles, updateNodeBounds, updateSizing, updateDocumentViewport, parentDoc, pushHistory]
   );
 
   const handleSizingChange = useCallback(
@@ -524,6 +529,8 @@ export const LayoutPanel: React.FC<{ node: PenmaNode }> = ({ node }) => {
                 } else {
                   updateNodeStyles(node.id, { width: `${pw}px`, height: `${ph}px` });
                   updateNodeBounds(node.id, { width: pw, height: ph });
+                  updateSizing(node.id, 'horizontal', 'fixed');
+                  updateSizing(node.id, 'vertical', 'fixed');
                 }
               }
             }} />

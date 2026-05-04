@@ -141,6 +141,88 @@ function buildTextContainer(
   };
 }
 
+// ── <br>-segmented inline content → Column of Rows ──────────
+// <p>line A<br>line B</p> becomes a vertical container whose children
+// are synthetic horizontal Rows, each holding one line's inline content.
+
+function splitChildrenByBr(children: SerializedNode[]): SerializedNode[][] {
+  const segments: SerializedNode[][] = [];
+  let current: SerializedNode[] = [];
+  for (const child of children) {
+    if (child.tagName === 'br') {
+      if (current.length > 0) {
+        segments.push(current);
+        current = [];
+      }
+    } else {
+      current.push(child);
+    }
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+// Bare text-span PenmaNode — no flex wrapper, behaves like inline text
+// in the Row's horizontal flow. Used for inline tokens inside a Row.
+function buildInlineTextSpan(node: SerializedNode): PenmaNode {
+  return {
+    id: uuid(),
+    tagName: 'span',
+    attributes: node.attributes,
+    children: [],
+    textContent: node.textContent,
+    styles: { computed: node.styles, overrides: {} },
+    bounds: node.bounds,
+    visible: true,
+    locked: false,
+    name: node.name,
+    sizing: { horizontal: 'hug', vertical: 'hug' },
+    fills: parseColorToFills(node.styles['color']),
+    cssClasses: node.cssClasses,
+    matchedCssRules: node.matchedCssRules,
+  };
+}
+
+function buildRowChild(
+  child: SerializedNode,
+  rowAutoLayout: AutoLayout,
+): PenmaNode {
+  // Text-only inline tokens render as bare text-spans so a Row of mixed
+  // <strong>, plain text, etc. flows naturally instead of nesting each
+  // token in its own flex container.
+  const isTextOnly = !!child.textContent
+    && (!child.children || child.children.length === 0)
+    && !child.rawHtml;
+  if (isTextOnly) return buildInlineTextSpan(child);
+  return assignIds(child, rowAutoLayout);
+}
+
+function buildRowSegment(
+  segmentChildren: SerializedNode[],
+  parentBounds: SerializedNode['bounds'],
+): PenmaNode {
+  const rowAutoLayout: AutoLayout = {
+    ...DEFAULT_AUTO_LAYOUT,
+    direction: 'horizontal',
+    counterAxisAlign: 'baseline',
+    gap: 0,
+    clipContent: false,
+  };
+  return {
+    id: uuid(),
+    tagName: 'div',
+    attributes: {},
+    children: segmentChildren.map((c) => buildRowChild(c, rowAutoLayout)),
+    styles: { computed: {}, overrides: {} },
+    bounds: parentBounds,
+    visible: true,
+    locked: false,
+    name: 'Row',
+    autoLayout: rowAutoLayout,
+    sizing: { horizontal: 'hug', vertical: 'hug' },
+  };
+}
+
 // ── Recursively convert serialized DOM → PenmaNode tree ─────
 
 function assignIds(
@@ -164,8 +246,41 @@ function assignIds(
   let autoLayout = node.tagName === 'span'
     ? { ...DEFAULT_AUTO_LAYOUT, direction: 'horizontal' as const }
     : detectAutoLayout(node.styles, childCount);
-  // If the element contains <br> children, switch to wrap direction so inline
-  // content flows horizontally and the <br>s force line breaks via flex-basis.
+
+  // <br>-separated inline content → vertical Column with one horizontal Row per line
+  if (hasBr) {
+    const segments = splitChildrenByBr(node.children);
+    if (segments.length > 1) {
+      const columnAutoLayout: AutoLayout = autoLayout
+        ? { ...autoLayout, direction: 'vertical' }
+        : { ...DEFAULT_AUTO_LAYOUT, direction: 'vertical' };
+      const sizing = parentAutoLayout
+        ? detectChildSizing(node.styles, parentAutoLayout)
+        : {
+            horizontal: (node.styles['width'] && node.styles['width'] !== 'auto' ? 'fixed' : 'hug') as 'fixed' | 'hug' | 'fill',
+            vertical: (node.styles['height'] && node.styles['height'] !== 'auto' ? 'fixed' : 'hug') as 'fixed' | 'hug' | 'fill',
+          };
+      const isHidden = node.styles['display'] === 'none';
+      return {
+        id: uuid(),
+        tagName: node.tagName,
+        attributes: node.attributes,
+        children: segments.map((seg) => buildRowSegment(seg, node.bounds)),
+        styles: { computed: node.styles, overrides: {} },
+        bounds: node.bounds,
+        visible: !isHidden,
+        locked: false,
+        name: node.name,
+        autoLayout: columnAutoLayout,
+        sizing,
+        fills: parseBgToFills(node.styles),
+        cssClasses: node.cssClasses,
+        matchedCssRules: node.matchedCssRules,
+      };
+    }
+  }
+
+  // Single-segment fallback: <br> exists only as leading/trailing — preserve old wrap behavior
   if (autoLayout && hasBr && autoLayout.direction !== 'wrap') {
     autoLayout = { ...autoLayout, direction: 'wrap' };
   }

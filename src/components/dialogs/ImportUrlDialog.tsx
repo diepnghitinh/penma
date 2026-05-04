@@ -8,7 +8,7 @@ import type { FetchUrlResponse } from '@/types/api';
 import type { PenmaDocument, PenmaNode } from '@/types/document';
 import { autoDetectComponents } from '@/lib/design-system/component-detector';
 import { flattenTree } from '@/lib/utils/tree-utils';
-import { applyMappingRules, type MappingRuleData } from '@/lib/import/apply-mapping-rules';
+import { applyMappingRules, type MappingRuleData } from '@/lib/execute/apply-mapping-rules';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },

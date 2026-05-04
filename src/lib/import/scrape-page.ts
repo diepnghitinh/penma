@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer';
-import type { SerializedNode } from './build-penma-tree';
+import type { SerializedNode } from '@/lib/execute/build-penma-tree';
 
 const MAX_NODES = 8000;
 const TIMEOUT = 20000;

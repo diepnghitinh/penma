@@ -5,7 +5,7 @@ import { X, Archive, Loader2, Monitor, MonitorUp, Laptop, Tablet, Smartphone, Ch
 import { useEditorStore } from '@/store/editor-store';
 import type { PenmaDocument } from '@/types/document';
 import { autoDetectComponents } from '@/lib/design-system/component-detector';
-import { applyMappingRules, type MappingRuleData } from '@/lib/import/apply-mapping-rules';
+import { applyMappingRules, type MappingRuleData } from '@/lib/execute/apply-mapping-rules';
 
 const SCREEN_PRESETS = [
   { label: 'Full HD+', width: 1920, height: 1200, icon: MonitorUp },

@@ -33,7 +33,9 @@
       "Bash(mkdir -p /tmp/landing-page-test)",
       "Bash(unzip -o \"/Volumes/DEVELOP/GITHUB/html2design/test/landing-page copy.zip\" -d /tmp/landing-page-test/)",
       "Bash(grep -nB1 \"}, \\\\[\" src/components/canvas/ShapeCreator.tsx)",
-      "Bash(grep -nB1 \"useCallback\\\\|useEffect\" src/components/canvas/Viewport.tsx)"
+      "Bash(grep -nB1 \"useCallback\\\\|useEffect\" src/components/canvas/Viewport.tsx)",
+      "Bash(git mv *)",
+      "Bash(awk '/ElementAttributePanel.tsx|LayoutPanel.tsx/{flag=1; print; next} /^\\\\/Volumes/{flag=0} flag')"
     ]
   }
 }

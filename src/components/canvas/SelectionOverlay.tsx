@@ -30,6 +30,13 @@ export const SelectionOverlay: React.FC = () => {
   const [selectionBoxes, setSelectionBoxes] = useState<SelectionBox[]>([]);
   const [hoverBox, setHoverBox] = useState<Rect | null>(null);
 
+  /**
+   * DOM refs for each rendered selection box, keyed by node id.
+   * Used during drag/resize to update the overlay imperatively without
+   * triggering React re-renders or forced sync layout via measureBoxes.
+   */
+  const boxElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
   // Check if hovered node is a component (master or instance)
   const isHoveredComponent = (() => {
     if (!hoveredId || selectedIds.includes(hoveredId)) return false;
@@ -56,7 +63,7 @@ export const SelectionOverlay: React.FC = () => {
   // ── Drag-to-move state ──
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
-  const dragNodeOriginal = useRef<{ id: string; el: HTMLElement; top: number; left: number; position: string }[]>([]);
+  const dragNodeOriginal = useRef<{ id: string; el: HTMLElement; top: number; left: number; position: string; startScreenRect: { x: number; y: number; width: number; height: number } }[]>([]);
   /** Cached sibling screen rects (built once at drag start) */
   const siblingRectsRef = useRef<SnapRect[]>([]);
   /** Initial bounding box of all dragged elements in screen space */
@@ -113,6 +120,23 @@ export const SelectionOverlay: React.FC = () => {
   // and never needs reassignment — kept for handlers that already use the ref.
   const measureBoxesRef = useRef(measureBoxes);
 
+  /** Write a screen rect directly to a selection box's DOM (no React render). */
+  const writeBoxRect = useCallback((id: string, x: number, y: number, w: number, h: number, zoom: number) => {
+    const el = boxElsRef.current.get(id);
+    if (!el) return;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+    const label = el.querySelector<HTMLElement>('[data-penma-size-label]');
+    if (label) {
+      const dw = w / zoom;
+      const dh = h / zoom;
+      const fmt = (v: number) => (v % 1 === 0 ? String(Math.round(v)) : (Math.round(v * 100) / 100).toFixed(2));
+      label.textContent = `${fmt(dw)} × ${fmt(dh)}`;
+    }
+  }, []);
+
   // Measure on selection/hover change
   useEffect(() => {
     rafRef.current = requestAnimationFrame(measureBoxes);
@@ -149,12 +173,14 @@ export const SelectionOverlay: React.FC = () => {
         const pos = cs?.position || '';
         if (pos === 'static' || !pos) el.style.position = 'relative';
       }
+      const r = el ? el.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
       return {
         id,
         el: el!,
         top: parseFloat(cs?.top || '0') || 0,
         left: parseFloat(cs?.left || '0') || 0,
         position: cs?.position || 'relative',
+        startScreenRect: { x: r.x, y: r.y, width: r.width, height: r.height },
       };
     });
 
@@ -235,21 +261,17 @@ export const SelectionOverlay: React.FC = () => {
       // Apply to DOM via cached element refs (no querySelector)
       const dx = (screenDx + snap.dx) / camera.zoom;
       const dy = (screenDy + snap.dy) / camera.zoom;
+      const screenDxFinal = screenDx + snap.dx;
+      const screenDyFinal = screenDy + snap.dy;
       for (const orig of dragNodeOriginal.current) {
-        if (orig.el) {
-          orig.el.style.top = `${orig.top + dy}px`;
-          orig.el.style.left = `${orig.left + dx}px`;
-        }
+        if (!orig.el) continue;
+        orig.el.style.top = `${orig.top + dy}px`;
+        orig.el.style.left = `${orig.left + dx}px`;
+        // Update the selection-box overlay imperatively — no React render,
+        // no querySelector, no getBoundingClientRect (which would force layout).
+        const r = orig.startScreenRect;
+        writeBoxRect(orig.id, r.x + screenDxFinal, r.y + screenDyFinal, r.width, r.height, camera.zoom);
       }
-
-      // Sync bounds + selection boxes
-      for (const orig of dragNodeOriginal.current) {
-        updateNodeBounds(orig.id, {
-          x: Math.round(orig.left + dx),
-          y: Math.round(orig.top + dy),
-        });
-      }
-      measureBoxesRef.current();
     };
 
     const handleMove = (e: PointerEvent) => {
@@ -291,7 +313,7 @@ export const SelectionOverlay: React.FC = () => {
       if (moveRaf) cancelAnimationFrame(moveRaf);
       clearSmartGuides();
     };
-  }, [isDragging, camera.zoom, pushHistory, updateNodeStyles]);
+  }, [isDragging, camera.zoom, pushHistory, updateNodeStyles, writeBoxRect]);
 
   // ── Resize handlers ──
   const handleResizeStart = useCallback((dir: ResizeDir, e: React.PointerEvent) => {
@@ -411,15 +433,27 @@ export const SelectionOverlay: React.FC = () => {
       if (dir.includes('w')) el.style.left = `${newLeft}px`;
       if (dir.includes('n')) el.style.top = `${newTop}px`;
 
-      // Sync bounds to store
-      const boundsUpdate: Record<string, number> = {
-        width: Math.round(newW),
-        height: Math.round(newH),
-      };
-      if (dir.includes('w')) boundsUpdate.x = Math.round(newLeft);
-      if (dir.includes('n')) boundsUpdate.y = Math.round(newTop);
-      updateNodeBounds(resizeStart.current.nodeId, boundsUpdate);
-      measureBoxesRef.current();
+      // Update the selection-box overlay imperatively from the snapped screen
+      // rect we just computed. This avoids:
+      //  - getBoundingClientRect right after a style mutation (forced layout),
+      //  - setSelectionBoxes → React re-render of SelectionOverlay (which walks
+      //    every document tree in IIFEs to detect component instances).
+      // The bounds are committed once in handleUp; React state is re-synced
+      // at that point too.
+      const initR = resizeInitScreenRef.current;
+      let boxX = initR.x;
+      let boxY = initR.y;
+      let boxW = initR.width;
+      let boxH = initR.height;
+      const sDx = screenDx + snap.dx;
+      const sDy = screenDy + snap.dy;
+      if (dir.includes('e')) boxW += sDx;
+      if (dir.includes('w')) { boxW -= sDx; boxX += sDx; }
+      if (dir.includes('s')) boxH += sDy;
+      if (dir.includes('n')) { boxH -= sDy; boxY += sDy; }
+      boxW = Math.max(20 * zoomVal, boxW);
+      boxH = Math.max(20 * zoomVal, boxH);
+      writeBoxRect(resizeStart.current.nodeId, boxX, boxY, boxW, boxH, zoomVal);
     };
 
     const handleMove = (e: PointerEvent) => {
@@ -482,7 +516,7 @@ export const SelectionOverlay: React.FC = () => {
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       clearSmartGuides();
     };
-  }, [isResizing, camera.zoom, pushHistory, updateNodeStyles]);
+  }, [isResizing, camera.zoom, pushHistory, updateNodeStyles, writeBoxRect]);
 
   // ── Render ──
   const HANDLE_DIRS: { dir: ResizeDir; cls: string }[] = [
@@ -514,6 +548,10 @@ export const SelectionOverlay: React.FC = () => {
       {selectionBoxes.map(({ id, rect }) => (
         <div
           key={id}
+          ref={(el) => {
+            if (el) boxElsRef.current.set(id, el);
+            else boxElsRef.current.delete(id);
+          }}
           className="absolute pointer-events-auto"
           style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
           onContextMenu={(e) => {
@@ -583,6 +621,7 @@ const SizeLabel: React.FC<{ rect: Rect }> = ({ rect }) => {
 
   return (
     <div
+      data-penma-size-label
       className="absolute left-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-white pointer-events-none"
       style={{
         background: 'var(--penma-primary)',
