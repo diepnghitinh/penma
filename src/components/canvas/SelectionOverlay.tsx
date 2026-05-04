@@ -220,14 +220,36 @@ export const SelectionOverlay: React.FC = () => {
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
     const updateNodeBounds = useEditorStore.getState().updateNodeBounds;
-    /** Track the current snap correction for use in handleUp */
-    let lastSnapDx = 0;
-    let lastSnapDy = 0;
     /** RAF id for all visual updates */
     let moveRaf = 0;
     /** Latest pointer coords (sampled at pointer rate, applied at RAF rate) */
     let latestClientX = 0;
     let latestClientY = 0;
+    /** True once we've crossed the move threshold and committed to the operation. */
+    let movementCommitted = false;
+    /**
+     * Throttle store writes to ~30fps. The DOM/box update at 60fps for smooth
+     * visuals; the store update is heavier (Immer + React reconcile of the
+     * dragged node and all its ancestors), so we run it half as often.
+     * The latest values are captured here and flushed in handleUp regardless.
+     */
+    let lastStoreWrite = 0;
+    let pendingDx = 0;
+    let pendingDy = 0;
+    const STORE_THROTTLE_MS = 33;
+
+    const flushStoreUpdate = (dx: number, dy: number) => {
+      for (const orig of dragNodeOriginal.current) {
+        updateNodeStyles(orig.id, {
+          top: `${orig.top + dy}px`,
+          left: `${orig.left + dx}px`,
+        });
+        updateNodeBounds(orig.id, {
+          x: Math.round(orig.left + dx),
+          y: Math.round(orig.top + dy),
+        });
+      }
+    };
 
     const applyMove = () => {
       moveRaf = 0;
@@ -246,8 +268,22 @@ export const SelectionOverlay: React.FC = () => {
 
       // Compute snap
       const snap = getSnappedPosition(tentative, siblingRectsRef.current);
-      lastSnapDx = snap.dx;
-      lastSnapDy = snap.dy;
+
+      const dx = (screenDx + snap.dx) / camera.zoom;
+      const dy = (screenDy + snap.dy) / camera.zoom;
+
+      // Wait for real movement before pushing history or mutating anything.
+      if (!movementCommitted) {
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+        movementCommitted = true;
+        pushHistory('Move element');
+        for (const orig of dragNodeOriginal.current) {
+          // 'static' ignores top/left — coerce to 'relative' so top/left apply.
+          if (orig.position === 'static' || !orig.position) {
+            updateNodeStyles(orig.id, { position: 'relative' });
+          }
+        }
+      }
 
       // Snapped rect for spacing detection
       const snapped: SnapRect = {
@@ -258,19 +294,26 @@ export const SelectionOverlay: React.FC = () => {
       const spacings = getEqualSpacing(snapped, siblingRectsRef.current);
       setSmartGuides(snap.guides, spacings);
 
-      // Apply to DOM via cached element refs (no querySelector)
-      const dx = (screenDx + snap.dx) / camera.zoom;
-      const dy = (screenDy + snap.dy) / camera.zoom;
       const screenDxFinal = screenDx + snap.dx;
       const screenDyFinal = screenDy + snap.dy;
+
+      // Imperative visual update: 60fps DOM + box mutations.
       for (const orig of dragNodeOriginal.current) {
         if (!orig.el) continue;
         orig.el.style.top = `${orig.top + dy}px`;
         orig.el.style.left = `${orig.left + dx}px`;
-        // Update the selection-box overlay imperatively — no React render,
-        // no querySelector, no getBoundingClientRect (which would force layout).
         const r = orig.startScreenRect;
         writeBoxRect(orig.id, r.x + screenDxFinal, r.y + screenDyFinal, r.width, r.height, camera.zoom);
+      }
+
+      // Throttled store update: 30fps. Always remember the latest delta so
+      // handleUp can flush a final sync.
+      pendingDx = dx;
+      pendingDy = dy;
+      const now = performance.now();
+      if (now - lastStoreWrite >= STORE_THROTTLE_MS) {
+        lastStoreWrite = now;
+        flushStoreUpdate(dx, dy);
       }
     };
 
@@ -280,28 +323,12 @@ export const SelectionOverlay: React.FC = () => {
       if (!moveRaf) moveRaf = requestAnimationFrame(applyMove);
     };
 
-    const handleUp = (e: PointerEvent) => {
+    const handleUp = () => {
       setIsDragging(false);
       clearSmartGuides();
       if (moveRaf) { cancelAnimationFrame(moveRaf); moveRaf = 0; }
-      const screenDx = e.clientX - dragStart.current.x;
-      const screenDy = e.clientY - dragStart.current.y;
-      const dx = (screenDx + lastSnapDx) / camera.zoom;
-      const dy = (screenDy + lastSnapDy) / camera.zoom;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        pushHistory('Move element');
-        for (const orig of dragNodeOriginal.current) {
-          updateNodeStyles(orig.id, {
-            position: orig.position,
-            top: `${orig.top + dy}px`,
-            left: `${orig.left + dx}px`,
-          });
-          updateNodeBounds(orig.id, {
-            x: Math.round(orig.left + dx),
-            y: Math.round(orig.top + dy),
-          });
-        }
-      }
+      // Final flush so the store matches the last DOM/box state.
+      if (movementCommitted) flushStoreUpdate(pendingDx, pendingDy);
       measureBoxesRef.current();
     };
 
@@ -362,6 +389,7 @@ export const SelectionOverlay: React.FC = () => {
     const setSmartGuides = useEditorStore.getState().setSmartGuides;
     const clearSmartGuides = useEditorStore.getState().clearSmartGuides;
     const updateNodeBounds = useEditorStore.getState().updateNodeBounds;
+    const updateSizing = useEditorStore.getState().updateSizing;
     const zoomVal = camera.zoom;
 
     /** Compute tentative screen rect from resize direction and deltas */
@@ -381,13 +409,30 @@ export const SelectionOverlay: React.FC = () => {
       return { x, y, w, h };
     };
 
-    let lastSnapDx = 0;
-    let lastSnapDy = 0;
     /** RAF id for all visual updates */
     let resizeRaf = 0;
     /** Latest pointer coords (sampled at pointer rate, applied at RAF rate) */
     let latestClientX = 0;
     let latestClientY = 0;
+    /** True once the resize has crossed the threshold and committed to history. */
+    let resizeCommitted = false;
+    /**
+     * Throttle store writes to ~30fps. DOM/box updates run at 60fps for smooth
+     * visuals; the store update is heavier (Immer + React reconcile of the
+     * resized node and all its ancestors), so we run it half as often.
+     * The latest values are captured here and flushed in handleUp regardless.
+     */
+    let lastStoreWrite = 0;
+    let pendingStyleUpdate: Record<string, string> | null = null;
+    let pendingBoundsUpdate: Record<string, number> | null = null;
+    const STORE_THROTTLE_MS = 33;
+
+    const flushResizeStoreUpdate = () => {
+      if (!pendingStyleUpdate || !pendingBoundsUpdate) return;
+      const nodeId = resizeStart.current.nodeId;
+      updateNodeStyles(nodeId, pendingStyleUpdate);
+      updateNodeBounds(nodeId, pendingBoundsUpdate);
+    };
 
     const applyResize = () => {
       resizeRaf = 0;
@@ -409,9 +454,6 @@ export const SelectionOverlay: React.FC = () => {
         top: dir.includes('n'),
       };
       const snap = getResizeSnap(tentative, resizeSiblingRectsRef.current, resizeEdges);
-      lastSnapDx = snap.dx;
-      lastSnapDy = snap.dy;
-      setSmartGuides(snap.guides, []);
 
       // Compute final doc-space dimensions and position
       let newW = resizeStart.current.width;
@@ -427,19 +469,28 @@ export const SelectionOverlay: React.FC = () => {
       newW = Math.max(20, newW);
       newH = Math.max(20, newH);
 
-      // Batch all DOM writes together
+      const nodeId = resizeStart.current.nodeId;
+
+      // Wait for real movement before pushing history or mutating anything.
+      if (!resizeCommitted) {
+        if (Math.abs(adjDx) < 1 && Math.abs(adjDy) < 1) return;
+        resizeCommitted = true;
+        pushHistory('Resize element');
+        // Flip sizing so width/height aren't stripped by DocumentRenderer's
+        // hug/fill branch on subsequent renders.
+        if (dir.includes('e') || dir.includes('w')) updateSizing(nodeId, 'horizontal', 'fixed');
+        if (dir.includes('s') || dir.includes('n')) updateSizing(nodeId, 'vertical', 'fixed');
+      }
+
+      setSmartGuides(snap.guides, []);
+
+      // Imperative DOM mutation: instant visual feedback even if React frame lags.
       el.style.width = `${newW}px`;
       el.style.height = `${newH}px`;
       if (dir.includes('w')) el.style.left = `${newLeft}px`;
       if (dir.includes('n')) el.style.top = `${newTop}px`;
 
-      // Update the selection-box overlay imperatively from the snapped screen
-      // rect we just computed. This avoids:
-      //  - getBoundingClientRect right after a style mutation (forced layout),
-      //  - setSelectionBoxes → React re-render of SelectionOverlay (which walks
-      //    every document tree in IIFEs to detect component instances).
-      // The bounds are committed once in handleUp; React state is re-synced
-      // at that point too.
+      // Update the selection-box overlay imperatively from the snapped screen rect.
       const initR = resizeInitScreenRef.current;
       let boxX = initR.x;
       let boxY = initR.y;
@@ -453,38 +504,10 @@ export const SelectionOverlay: React.FC = () => {
       if (dir.includes('n')) { boxH -= sDy; boxY += sDy; }
       boxW = Math.max(20 * zoomVal, boxW);
       boxH = Math.max(20 * zoomVal, boxH);
-      writeBoxRect(resizeStart.current.nodeId, boxX, boxY, boxW, boxH, zoomVal);
-    };
+      writeBoxRect(nodeId, boxX, boxY, boxW, boxH, zoomVal);
 
-    const handleMove = (e: PointerEvent) => {
-      latestClientX = e.clientX;
-      latestClientY = e.clientY;
-      if (!resizeRaf) resizeRaf = requestAnimationFrame(applyResize);
-    };
-
-    const handleUp = (e: PointerEvent) => {
-      setIsResizing(false);
-      clearSmartGuides();
-      if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
-
-      const screenDx = e.clientX - resizeStart.current.x;
-      const screenDy = e.clientY - resizeStart.current.y;
-      const dir = resizeDir.current;
-      let newW = resizeStart.current.width;
-      let newH = resizeStart.current.height;
-      let newLeft = resizeStart.current.left;
-      let newTop = resizeStart.current.top;
-      const adjDx = (screenDx + lastSnapDx) / zoomVal;
-      const adjDy = (screenDy + lastSnapDy) / zoomVal;
-      if (dir.includes('e')) newW += adjDx;
-      if (dir.includes('w')) { newW -= adjDx; newLeft += adjDx; }
-      if (dir.includes('s')) newH += adjDy;
-      if (dir.includes('n')) { newH -= adjDy; newTop += adjDy; }
-      newW = Math.max(20, newW);
-      newH = Math.max(20, newH);
-      pushHistory('Resize element');
-      const nodeId = resizeStart.current.nodeId;
-
+      // Throttled store update: 30fps. Always remember the latest values so
+      // handleUp can flush a final sync.
       const styleUpdate: Record<string, string> = {
         width: `${Math.round(newW)}px`,
         height: `${Math.round(newH)}px`,
@@ -501,9 +524,27 @@ export const SelectionOverlay: React.FC = () => {
         styleUpdate.top = `${Math.round(newTop)}px`;
         boundsUpdate.y = Math.round(newTop);
       }
+      pendingStyleUpdate = styleUpdate;
+      pendingBoundsUpdate = boundsUpdate;
+      const now = performance.now();
+      if (now - lastStoreWrite >= STORE_THROTTLE_MS) {
+        lastStoreWrite = now;
+        flushResizeStoreUpdate();
+      }
+    };
 
-      updateNodeStyles(nodeId, styleUpdate);
-      updateNodeBounds(nodeId, boundsUpdate);
+    const handleMove = (e: PointerEvent) => {
+      latestClientX = e.clientX;
+      latestClientY = e.clientY;
+      if (!resizeRaf) resizeRaf = requestAnimationFrame(applyResize);
+    };
+
+    const handleUp = () => {
+      setIsResizing(false);
+      clearSmartGuides();
+      if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
+      // Final flush so the store matches the last DOM/box state.
+      if (resizeCommitted) flushResizeStoreUpdate();
       resizeElRef.current = null;
       measureBoxesRef.current();
     };
